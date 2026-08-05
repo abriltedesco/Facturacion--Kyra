@@ -130,22 +130,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Col 2: two stat cards */}
+        {/* Col 2: stat cards — Clientes + Servicios activos (T01) */}
         <div className="dash-stat-col">
-          {[0,1].map(i => (
-            <div key={i} className="dash-stat-card">
+          {[
+            { value: '220', label: 'Clientes', pct: '6.76%', icon: 'user' },
+            { value: '48', label: 'Servicios activos', pct: '4.20%', icon: 'briefcase' },
+          ].map(s => (
+            <div key={s.label} className="dash-stat-card">
               <div className="dash-stat-icon-wrap">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
+                {s.icon === 'user' ? (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                    <rect x="2" y="7" width="20" height="14" rx="2"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                  </svg>
+                )}
               </div>
               <div className="dash-stat-body">
-                <div className="dash-stat-value">220</div>
-                <div className="dash-stat-label">Clientes</div>
+                <div className="dash-stat-value">{s.value}</div>
+                <div className="dash-stat-label">{s.label}</div>
                 <div className="dash-stat-pct">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                  {' '}6.76% <span className="pct-context">Contra el mes pasado</span>
+                  {' '}{s.pct} <span className="pct-context">Contra el mes pasado</span>
                 </div>
               </div>
             </div>

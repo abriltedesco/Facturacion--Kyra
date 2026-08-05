@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import Modal from '../components/Modal'
 
 /* ─────────────────────────── SVG Icons ──────────────────────────── */
 const IcoPaperPlane = () => (
@@ -98,6 +99,50 @@ function BadgeEstado({ estado }) {
 /* ─────────────────────────── Main Component ──────────────────────── */
 export default function Emails() {
   const [tab, setTab]       = useState(0)
+  const [historial, setHistorial] = useState(HISTORIAL)
+  const [menuOpen, setMenuOpen]   = useState(null)   // id de fila con menú abierto
+  const [reenvioRow, setReenvioRow] = useState(null) // fila en modal de reenvío
+  const [reenvioDest, setReenvioDest] = useState('')
+  const [errorRow, setErrorRow]   = useState(null)   // fila en modal de detalle de error
+  const [toast, setToast]         = useState(null)
+  const menuRef = useRef(null)
+  const reenvioTriggerRef = useRef(null)
+
+  // cerrar menú al hacer clic afuera
+  useEffect(() => {
+    if (menuOpen === null) return
+    const close = e => { if (!menuRef.current?.contains(e.target)) setMenuOpen(null) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuOpen])
+
+  // toast auto-hide
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const abrirReenvio = row => { setReenvioRow(row); setReenvioDest(row.email); setMenuOpen(null) }
+  const confirmarReenvio = () => {
+    // Decisión de diseño: el reenvío agrega una NUEVA fila al historial (registro de auditoría),
+    // no actualiza la existente — así queda trazabilidad de cada envío.
+    const hoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    setHistorial(p => [{
+      ...reenvioRow,
+      id: Date.now(),
+      email: reenvioDest,
+      fecha: hoy,
+      estado: 'Enviado',
+    }, ...p])
+    setToast('Email reenviado a ' + reenvioDest)
+    setReenvioRow(null)
+  }
+  const copiarDestinatario = row => {
+    navigator.clipboard?.writeText(row.email)
+    setToast('Destinatario copiado: ' + row.email)
+    setMenuOpen(null)
+  }
   const [page, setPage]     = useState(1)
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
@@ -113,7 +158,7 @@ export default function Emails() {
   const [editMsg,    setEditMsg]    = useState(PLANTILLAS_DATA[0].mensaje)
 
   /* Filter historial */
-  const filtered = HISTORIAL.filter(r => {
+  const filtered = historial.filter(r => {
     if (filtroEstado && r.estado !== filtroEstado) return false
     if (filtroCliente && r.cliente !== filtroCliente) return false
     return true
@@ -260,7 +305,31 @@ export default function Emails() {
                     <td className="text-muted-sm">{row.fecha}</td>
                     <td><BadgeEstado estado={row.estado} /></td>
                     <td className="text-muted-sm">{row.entidad}</td>
-                    <td><button className="btn-more" aria-label="Más opciones"><IcoMore /></button></td>
+                    <td className="row-menu-cell">
+                      <button className="btn-more" aria-haspopup="true" aria-expanded={menuOpen === row.id}
+                        aria-label={'Acciones para ' + row.factura}
+                        onClick={() => setMenuOpen(menuOpen === row.id ? null : row.id)}>
+                        <IcoMore />
+                      </button>
+                      {menuOpen === row.id && (
+                        <div className="row-menu" role="menu" ref={menuRef}>
+                          <button role="menuitem" className="row-menu-item" onClick={() => abrirReenvio(row)}>
+                            Reenviar email
+                          </button>
+                          <button role="menuitem" className="row-menu-item" onClick={() => { setMenuOpen(null); setToast('Abriendo PDF de ' + row.factura + '…') }}>
+                            Ver PDF adjunto
+                          </button>
+                          <button role="menuitem" className="row-menu-item" onClick={() => copiarDestinatario(row)}>
+                            Copiar destinatario
+                          </button>
+                          {row.estado === 'Error' && (
+                            <button role="menuitem" className="row-menu-item row-menu-item-error" onClick={() => { setErrorRow(row); setMenuOpen(null) }}>
+                              Ver detalle del error
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -479,6 +548,61 @@ export default function Emails() {
           </div>
         </div>
       </div>
+      {/* ── Modal de reenvío (T07) ── */}
+      <Modal isOpen={!!reenvioRow} onClose={() => setReenvioRow(null)} title="REENVIAR EMAIL" triggerRef={reenvioTriggerRef}
+        footer={
+          <div className="modal-footer-inner">
+            <div className="modal-validation" />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-cancelar" onClick={() => setReenvioRow(null)}>Cancelar</button>
+              <button className="btn-guardar ready" onClick={confirmarReenvio}>Reenviar</button>
+            </div>
+          </div>
+        }>
+        {reenvioRow && (
+          <>
+            <p className="reenvio-desc">
+              Vas a reenviar <strong>{reenvioRow.factura}</strong> ({reenvioRow.cliente}) con el PDF adjunto.
+              El reenvío queda registrado como un envío nuevo en el historial.
+            </p>
+            <div className="form-group">
+              <label htmlFor="reenvio-dest">Destinatario</label>
+              <input id="reenvio-dest" className="form-input" type="email"
+                value={reenvioDest} onChange={e => setReenvioDest(e.target.value)} />
+              <span className="field-hint">Podés cambiar el destinatario antes de reenviar</span>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ── Modal detalle del error (T07) ── */}
+      <Modal isOpen={!!errorRow} onClose={() => setErrorRow(null)} title="DETALLE DEL ERROR" triggerRef={reenvioTriggerRef}
+        footer={
+          <div className="modal-footer-inner">
+            <div className="modal-validation" />
+            <button className="btn-guardar ready" onClick={() => { const r = errorRow; setErrorRow(null); abrirReenvio(r) }}>
+              Reintentar envío
+            </button>
+          </div>
+        }>
+        {errorRow && (
+          <div className="error-detail">
+            <div className="error-detail-row"><span className="error-detail-key">Factura</span><span>{errorRow.factura}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Cliente</span><span>{errorRow.cliente}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Destinatario</span><span>{errorRow.email}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Fecha del intento</span><span>{errorRow.fecha}</span></div>
+            <div className="error-detail-msg">
+              <IcoTriangle />
+              <span>El servidor de correo del destinatario rechazó el mensaje (buzón lleno o dirección inexistente). Verificá la dirección antes de reintentar.</span>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">{toast}</div>
+      )}
     </div>
   )
 }

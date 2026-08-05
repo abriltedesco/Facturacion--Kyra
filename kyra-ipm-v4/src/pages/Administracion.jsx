@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Modal from '../components/Modal'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
@@ -37,20 +38,32 @@ const ENTIDADES_DATA = Array.from({ length: 10 }, (_, i) => ({
   identificacion: '30-' + String(61234567 + i * 1234567) + '-8',
 }))
 
-const SERVICIOS_DATA = Array.from({ length: 10 }, (_, i) => ({
-  id: i + 1,
-  nombre: ['Social Media', 'Diseño UX/UI', 'Consultoría', 'Branding', 'SEO', 'SEM', 'Estrategia', 'Contenido', 'Analytics', 'Email Marketing'][i],
-  estado: i % 5 === 0 ? 'Inactivo' : 'Activo',
-  tipo: ['Mensual', 'Por hora', 'Por hora', 'Proyecto', 'Mensual', 'Mensual', 'Por hora', 'Mensual', 'Mensual', 'Mensual'][i],
-  precio: ['$80.000', '$95.000/h', '$120.000/h', '$250.000', '$60.000', '$75.000', '$150.000/h', '$70.000', '$55.000', '$65.000'][i],
-}))
+const SERVICIOS_DATA = [
+  { id: 1,  nombre: 'Social Media',     tipo: 'Fijo',     precioBase: '$85,000',  moneda: 'ARS', clientesActivos: 6, estado: 'Activo' },
+  { id: 2,  nombre: 'Diseño UX/UI',     tipo: 'Fijo',     precioBase: '$120,000', moneda: 'ARS', clientesActivos: 3, estado: 'Activo' },
+  { id: 3,  nombre: 'Dev a medida',     tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo' },
+  { id: 4,  nombre: 'Reporting',        tipo: 'Fijo',     precioBase: '$4,500',   moneda: 'USD', clientesActivos: 1, estado: 'Activo' },
+  { id: 5,  nombre: 'Consultoría',      tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo' },
+  { id: 6,  nombre: 'SEO',             tipo: 'Fijo',     precioBase: '$60,000',  moneda: 'ARS', clientesActivos: 4, estado: 'Activo' },
+  { id: 7,  nombre: 'Branding',        tipo: 'Fijo',     precioBase: '$250,000', moneda: 'ARS', clientesActivos: 1, estado: 'Activo' },
+  { id: 8,  nombre: 'Email Marketing', tipo: 'Fijo',     precioBase: '$65,000',  moneda: 'ARS', clientesActivos: 3, estado: 'Activo' },
+  { id: 9,  nombre: 'SEM',             tipo: 'Fijo',     precioBase: '$75,000',  moneda: 'ARS', clientesActivos: 2, estado: 'Inactivo' },
+  { id: 10, nombre: 'Contenido',       tipo: 'Fijo',     precioBase: '$70,000',  moneda: 'ARS', clientesActivos: 5, estado: 'Activo' },
+]
 
 // ── Forms ────────────────────────────────────────────────────────────────────
 
-const EMPTY_CLIENTE   = { nombre: '', email: '', tipoFactura: '', periodo: '', impuesto: '', identificacion: '', contacto: '', anotaciones: '' }
+const EMPTY_CLIENTE   = { nombre: '', email: '', paisFiscal: '', entidadEmisora: '', tipoFactura: '', periodo: '', periodicidadIPC: '', impuesto: '', identificacion: '', contacto: '', carpetaDrive: '', anotaciones: '' }
 const EMPTY_PROVEEDOR = { nombre: '', email: '', tipoServicio: '', metodoPago: '', destino: '', cuit: '' }
-const EMPTY_ENTIDAD   = { nombre: '', tipo: '', cuentaBancaria: '', comprobante: '', identificacion: '' }
-const EMPTY_SERVICIO  = { nombre: '', tipo: '', precio: '' }
+const EMPTY_ENTIDAD   = { nombre: '', tipo: '', comprobanteDefault: '', cuentaBancaria: '', comprobante: '', identificacion: '' }
+
+const ENTIDADES_EMISORAS = ['Kyra SRL', 'Monotributo Personal Mai', 'Mercury LLC']
+const TIPOS_POR_ENTIDAD = {
+  'Kyra SRL': ['A', 'B (Exento IVA)'],
+  'Monotributo Personal Mai': ['C'],
+  'Mercury LLC': ['LLC'],
+}
+const EMPTY_SERVICIO  = { nombre: '', tipoSvc: 'Fijo', precioBase: '', moneda: 'ARS', estadoInicial: true }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -107,6 +120,7 @@ const SVG_IMPORT = (
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Administracion() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
   const [clientes, setClientes] = useState(CLIENTES_DATA)
   const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
@@ -120,6 +134,10 @@ export default function Administracion() {
   const [formE, setFormE] = useState(EMPTY_ENTIDAD)
   const [formS, setFormS] = useState(EMPTY_SERVICIO)
   const [submitted, setSubmitted] = useState(false)
+  const [ccList, setCcList] = useState([])
+  const [ccInput, setCcInput] = useState('')
+  const [rowMenuOpen, setRowMenuOpen] = useState(null)
+  const rowMenuRef = useRef(null)
 
   const [search, setSearch] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -141,6 +159,21 @@ export default function Administracion() {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [showDropdown])
+
+  // Close row menu on outside click
+  useEffect(() => {
+    const handler = e => {
+      if (rowMenuRef.current && !rowMenuRef.current.contains(e.target)) setRowMenuOpen(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function handleDeleteRow(id) {
+    const setters = [setClientes, setProveedores, setEntidades, setServicios]
+    setters[tab](prev => prev.filter(r => r.id !== id))
+    setRowMenuOpen(null)
+  }
 
   const currentData = [clientes, proveedores, entidades, servicios][tab]
 
@@ -167,16 +200,30 @@ export default function Administracion() {
   const chE = e => setFormE(p => ({ ...p, [e.target.name]: e.target.value }))
   const chS = e => setFormS(p => ({ ...p, [e.target.name]: e.target.value }))
 
-  const isReadyC = formC.nombre && formC.email && formC.tipoFactura
+  // T05: entidad emisora condiciona el tipo de factura
+  const chEntidad = e => {
+    const ent = e.target.value
+    const tipos = TIPOS_POR_ENTIDAD[ent] || []
+    setFormC(p => ({ ...p, entidadEmisora: ent, tipoFactura: tipos.length === 1 ? tipos[0] : '' }))
+  }
+  // T03: CC chips
+  const addCc = () => {
+    const v = ccInput.trim()
+    if (v && !ccList.includes(v)) setCcList(p => [...p, v])
+    setCcInput('')
+  }
+  const removeCc = m => setCcList(p => p.filter(x => x !== m))
+
+  const isReadyC = formC.nombre && formC.email && formC.entidadEmisora && formC.tipoFactura
   const isReadyP = formP.nombre && formP.email && formP.destino
   const isReadyE = formE.nombre && formE.cuentaBancaria
-  const isReadyS = formS.nombre && formS.tipo && formS.precio
+  const isReadyS = formS.nombre && formS.tipoSvc
 
   const guardarC = () => {
     setSubmitted(true)
     if (!isReadyC) return
     setClientes(p => [{ id: Date.now(), nombre: formC.nombre, estado: 'ACTIVO', mail: formC.email, tipoFactura: formC.tipoFactura, impuesto: formC.impuesto || 'IVA 21%', identificacion: formC.identificacion }, ...p])
-    setFormC(EMPTY_CLIENTE); setSubmitted(false); setOpenModal(null); setTab(0)
+    setFormC(EMPTY_CLIENTE); setCcList([]); setCcInput(''); setSubmitted(false); setOpenModal(null); setTab(0)
   }
   const guardarP = () => {
     setSubmitted(true)
@@ -193,24 +240,24 @@ export default function Administracion() {
   const guardarS = () => {
     setSubmitted(true)
     if (!isReadyS) return
-    setServicios(p => [{ id: Date.now(), nombre: formS.nombre, estado: 'Activo', tipo: formS.tipo, precio: formS.precio }, ...p])
+    setServicios(p => [{ id: Date.now(), nombre: formS.nombre, estado: formS.estadoInicial ? 'Activo' : 'Inactivo', tipo: formS.tipoSvc, precioBase: formS.tipoSvc === 'Fijo' ? formS.precioBase : '—', moneda: formS.moneda, clientesActivos: 0 }, ...p])
     setFormS(EMPTY_SERVICIO); setSubmitted(false); setOpenModal(null); setTab(3)
   }
 
   const footerFor = (isReady, onSave) => (
     <div className="modal-footer-inner">
       <div className="modal-validation">
-        {submitted && !isReady && (
+        {!isReady && (
           <span>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            {' '}Faltan llenar datos
+            {' '}Completá los campos obligatorios (*)
           </span>
         )}
       </div>
-      <button className={'btn-guardar' + (isReady ? ' ready' : '')} onClick={onSave}>Guardar</button>
+      <button className={'btn-guardar' + (isReady ? ' ready' : '')} onClick={onSave} disabled={!isReady}>Guardar</button>
     </div>
   )
 
@@ -224,18 +271,33 @@ export default function Administracion() {
           <th scope="col">CLIENTE</th><th scope="col">ESTADO</th>
           <th scope="col">MAIL</th><th scope="col">TIPO FACTURA</th>
           <th scope="col">IMPUESTO ADICIONAL</th><th scope="col">IDENTIFICACIÓN FISCAL</th>
+          <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
         </tr></thead>
         <tbody>
           {pageRows.length === 0
             ? <tr><td colSpan={6} className="td-empty">Sin resultados</td></tr>
             : pageRows.map(r => (
-              <tr key={r.id}>
-                <td>{r.nombre}</td>
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate('/administracion/cliente/' + r.id)}>
+                <td><span className="link-nro">{r.nombre}</span></td>
                 <td><Badge estado={r.estado} /></td>
                 <td className="td-muted">{r.mail}</td>
                 <td className="td-muted">{r.tipoFactura}</td>
                 <td className="td-muted">{r.impuesto}</td>
                 <td className="td-muted">{r.identificacion}</td>
+                <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
+                  <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                    onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                  {rowMenuOpen === r.id && (
+                    <div className="row-menu" ref={rowMenuRef} role="menu">
+                      <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                        </svg>
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))
           }
@@ -263,7 +325,20 @@ export default function Administracion() {
                 <td className="td-muted">{r.medioPago}</td>
                 <td className="td-muted">{r.destino}</td>
                 <td className="td-muted">{r.cuit}</td>
-                <td><button className="dots-btn" aria-label={'Opciones ' + r.nombre}>⋮</button></td>
+                <td className="row-menu-cell">
+                  <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                    onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                  {rowMenuOpen === r.id && (
+                    <div className="row-menu" ref={rowMenuRef} role="menu">
+                      <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                        </svg>
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))
           }
@@ -277,18 +352,33 @@ export default function Administracion() {
           <th scope="col">NOMBRE</th><th scope="col">ESTADO</th>
           <th scope="col">TIPO</th><th scope="col">CUENTA BANCARIA</th>
           <th scope="col">COMPROBANTE</th><th scope="col">IDENTIFICACIÓN FISCAL</th>
+          <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
         </tr></thead>
         <tbody>
           {pageRows.length === 0
             ? <tr><td colSpan={6} className="td-empty">Sin resultados</td></tr>
             : pageRows.map(r => (
-              <tr key={r.id}>
-                <td>{r.nombre}</td>
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate('/administracion/entidad/' + r.id)}>
+                <td><span className="link-nro">{r.nombre}</span></td>
                 <td className="td-muted">{r.estado}</td>
                 <td className="td-muted">{r.tipo}</td>
                 <td className="td-muted">{r.cuentaBancaria}</td>
                 <td className="td-muted">{r.comprobante}</td>
                 <td className="td-muted">{r.identificacion}</td>
+                <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
+                  <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                    onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                  {rowMenuOpen === r.id && (
+                    <div className="row-menu" ref={rowMenuRef} role="menu">
+                      <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                        </svg>
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))
           }
@@ -296,27 +386,51 @@ export default function Administracion() {
       </table>
     )
 
-    // tab === 3: Servicios
+    // tab === 3: Servicios (catálogo global — T13)
     return (
-      <table>
-        <thead><tr>
-          <th scope="col">NOMBRE</th><th scope="col">ESTADO</th>
-          <th scope="col">TIPO</th><th scope="col">PRECIO</th>
-        </tr></thead>
-        <tbody>
-          {pageRows.length === 0
-            ? <tr><td colSpan={4} className="td-empty">Sin resultados</td></tr>
-            : pageRows.map(r => (
-              <tr key={r.id}>
-                <td>{r.nombre}</td>
-                <td className="td-muted">{r.estado}</td>
-                <td className="td-muted">{r.tipo}</td>
-                <td className="td-muted">{r.precio}</td>
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
+      <>
+        <table>
+          <thead><tr>
+            <th scope="col">NOMBRE</th>
+            <th scope="col">TIPO</th>
+            <th scope="col">PRECIO BASE</th>
+            <th scope="col">MONEDA</th>
+            <th scope="col">CLIENTES ACTIVOS</th>
+            <th scope="col">ESTADO</th>
+            <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
+          </tr></thead>
+          <tbody>
+            {pageRows.length === 0
+              ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
+              : pageRows.map(r => (
+                <tr key={r.id}>
+                  <td><strong>{r.nombre}</strong></td>
+                  <td className="td-muted">{r.tipo}</td>
+                  <td>{r.precioBase}</td>
+                  <td><span className="moneda-badge">{r.moneda}</span></td>
+                  <td className="td-muted">{r.clientesActivos}</td>
+                  <td><Badge estado={r.estado} /></td>
+                  <td className="row-menu-cell">
+                    <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                      onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                    {rowMenuOpen === r.id && (
+                      <div className="row-menu" ref={rowMenuRef} role="menu">
+                        <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                          </svg>
+                          Eliminar
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+        <p className="servicios-nota">Los precios y condiciones por cliente se configuran en el perfil de cada cliente.</p>
+      </>
     )
   }
 
@@ -411,13 +525,47 @@ export default function Administracion() {
           <label htmlFor="c-email">Email</label>
           <input id="c-email" className="form-input" name="email" type="email" value={formC.email} onChange={chC} />
         </div>
+        <div className="form-group">
+          <label htmlFor="c-cc">Emails en copia (CC)</label>
+          {ccList.length > 0 && (
+            <div className="cc-chips">
+              {ccList.map(m => (
+                <span key={m} className="cc-chip">
+                  {m}
+                  <button type="button" className="cc-chip-remove" aria-label={'Quitar ' + m} onClick={() => removeCc(m)}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="cc-add-row">
+            <input id="c-cc" className="form-input" type="email" placeholder="email@ejemplo.com"
+              value={ccInput} onChange={e => setCcInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCc() } }} />
+            <button type="button" className="btn-add-cc-form" onClick={addCc}>+ Agregar email</button>
+          </div>
+        </div>
+        <div className="form-group">
+          <label htmlFor="c-pais">País y condición fiscal</label>
+          <input id="c-pais" className="form-input" name="paisFiscal" value={formC.paisFiscal} onChange={chC} placeholder="Argentina – Responsable Inscripto" />
+        </div>
+        <div className="form-group form-group-destacado">
+          <label htmlFor="c-entidad">Entidad emisora</label>
+          <select id="c-entidad" className="form-select" name="entidadEmisora" value={formC.entidadEmisora} onChange={chEntidad}>
+            <option value=""></option>
+            {ENTIDADES_EMISORAS.map(en => <option key={en} value={en}>{en}</option>)}
+          </select>
+        </div>
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="c-tipo">Tipo de Factura</label>
-            <select id="c-tipo" className="form-select" name="tipoFactura" value={formC.tipoFactura} onChange={chC}>
+            <select id="c-tipo" className="form-select" name="tipoFactura" value={formC.tipoFactura} onChange={chC}
+              disabled={!formC.entidadEmisora || (TIPOS_POR_ENTIDAD[formC.entidadEmisora] || []).length === 1}>
               <option value=""></option>
-              {['A', 'B', 'C', 'LLC'].map(t => <option key={t} value={t}>Factura {t}</option>)}
+              {(TIPOS_POR_ENTIDAD[formC.entidadEmisora] || []).map(t => <option key={t} value={t}>Factura {t}</option>)}
             </select>
+            {formC.entidadEmisora && (TIPOS_POR_ENTIDAD[formC.entidadEmisora] || []).length === 1
+              ? <span className="field-hint">Definido por la entidad emisora</span>
+              : !formC.entidadEmisora && <span className="field-hint">Seleccioná primero la entidad emisora</span>}
           </div>
           <div className="form-group">
             <label htmlFor="c-periodo">Período de Facturación</label>
@@ -426,6 +574,13 @@ export default function Administracion() {
               {['Mensual', 'Bimestral', 'Trimestral', 'Anual'].map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+        </div>
+        <div className="form-group">
+          <label htmlFor="c-ipc">Periodicidad de actualización por IPC</label>
+          <select id="c-ipc" className="form-select" name="periodicidadIPC" value={formC.periodicidadIPC} onChange={chC}>
+            <option value=""></option>
+            {['Mensual', 'Bimestral', 'Trimestral', 'Sin actualización automática'].map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
         </div>
         <div className="form-group">
           <label htmlFor="c-impuesto">Impuesto Adicional</label>
@@ -438,6 +593,10 @@ export default function Administracion() {
         <div className="form-group">
           <label htmlFor="c-contacto">Nombre de Contacto</label>
           <input id="c-contacto" className="form-input" name="contacto" value={formC.contacto} onChange={chC} />
+        </div>
+        <div className="form-group">
+          <label htmlFor="c-drive">Carpeta Drive (URL)</label>
+          <input id="c-drive" className="form-input" name="carpetaDrive" value={formC.carpetaDrive} onChange={chC} placeholder="https://drive.google.com/..." />
         </div>
         <div className="form-group">
           <label htmlFor="c-anot">Anotaciones</label>
@@ -492,6 +651,13 @@ export default function Administracion() {
           <input id="e-tipo" className="form-input" name="tipo" value={formE.tipo} onChange={chE} />
         </div>
         <div className="form-group">
+          <label htmlFor="e-compdef">Tipo de comprobante por defecto</label>
+          <select id="e-compdef" className="form-select" name="comprobanteDefault" value={formE.comprobanteDefault} onChange={chE}>
+            <option value=""></option>
+            {['A', 'B (Exento IVA)', 'C', 'LLC'].map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
           <label htmlFor="e-cuenta">Cuenta Bancaria</label>
           <input id="e-cuenta" className="form-input" name="cuentaBancaria" value={formE.cuentaBancaria} onChange={chE} />
         </div>
@@ -505,24 +671,38 @@ export default function Administracion() {
         </div>
       </Modal>
 
-      {/* NUEVO SERVICIO modal */}
+      {/* NUEVO SERVICIO modal — catálogo global (T13) */}
       <Modal isOpen={openModal === 'servicio'} onClose={closeModal} title="NUEVO SERVICIO" triggerRef={btnNuevoRef}
         footer={footerFor(isReadyS, guardarS)}>
         <div className="form-group">
-          <label htmlFor="s-nombre">Nombre</label>
-          <input id="s-nombre" className="form-input" name="nombre" value={formS.nombre} onChange={chS} />
+          <label htmlFor="s-nombre">Nombre del servicio <span className="label-req">*</span></label>
+          <input id="s-nombre" className="form-input" name="nombre" value={formS.nombre} onChange={chS} placeholder="ej: Social Media" />
         </div>
         <div className="form-group">
-          <label htmlFor="s-tipo">Tipo</label>
-          <select id="s-tipo" className="form-select" name="tipo" value={formS.tipo} onChange={chS}>
-            <option value=""></option>
-            {['Mensual', 'Por hora', 'Proyecto'].map(t => <option key={t} value={t}>{t}</option>)}
+          <label>Tipo <span className="label-req">*</span></label>
+          <div className="svc-tipo-group">
+            {['Fijo', 'Por hora'].map(t => (
+              <label key={t} className={'svc-tipo-option' + (formS.tipoSvc === t ? ' svc-tipo-active' : '')}>
+                <input type="radio" name="tipoSvc" value={t} checked={formS.tipoSvc === t}
+                  onChange={chS} style={{ display: 'none' }} />
+                {t === 'Fijo' ? 'Precio fijo' : 'Por hora'}
+              </label>
+            ))}
+          </div>
+        </div>
+        {formS.tipoSvc === 'Fijo' && (
+          <div className="form-group">
+            <label htmlFor="s-precio">Precio base</label>
+            <input id="s-precio" className="form-input" name="precioBase" value={formS.precioBase} onChange={chS} placeholder="0.00" />
+          </div>
+        )}
+        <div className="form-group">
+          <label htmlFor="s-moneda">Moneda</label>
+          <select id="s-moneda" className="form-select" name="moneda" value={formS.moneda} onChange={chS}>
+            <option>ARS</option><option>USD</option>
           </select>
         </div>
-        <div className="form-group">
-          <label htmlFor="s-precio">Precio</label>
-          <input id="s-precio" className="form-input" name="precio" value={formS.precio} onChange={chS} placeholder="$0" />
-        </div>
+        <p className="servicios-nota" style={{ marginTop: 8 }}>Los precios específicos por cliente se configuran en el perfil de cada cliente.</p>
       </Modal>
     </div>
   )
