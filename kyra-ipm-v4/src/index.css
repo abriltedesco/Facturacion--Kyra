@@ -375,7 +375,7 @@ html, body, #root {
 .table-container {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow: visible;
   margin-top: 16px;
 }
 

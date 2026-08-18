@@ -179,9 +179,8 @@ function TagCliente({ nombre }) {
 }
 
 const ALERTA_LABELS = {
-  ipc_pendiente:       { txt: 'IPC pendiente de aplicar', color: '#e67e22' },
-  horas_no_ingresadas: { txt: 'Horas no ingresadas',      color: '#c0392b' },
-  variacion_umbral:    { txt: 'Variación sobre umbral',   color: '#8e44ad' },
+  ipc_pendiente:    { txt: 'IPC pendiente de aplicar', color: '#e67e22' },
+  variacion_umbral: { txt: 'Variación sobre umbral',   color: '#8e44ad' },
 }
 
 function BadgesAlerta({ alertas }) {
@@ -222,39 +221,10 @@ function StatCard({ label, value, sub }) {
 // ─── Card: Pendiente Revisión ─────────────────────────────────────────────────
 
 function CardRevision({ linea, cliente, entidad, servicio, onAprobar, onEditar }) {
-  const esHoras = linea.alertas?.includes('horas_no_ingresadas')
-  const [horas,   setHoras]   = useState(linea.cantidadHoras ?? '')
-  const [tarifa,  setTarifa]  = useState(linea.tarifaHora ?? '')
-  const [errH,    setErrH]    = useState('')
-  const [errT,    setErrT]    = useState('')
-
-  const montoCalc = esHoras && Number(horas) > 0 && Number(tarifa) > 0
-    ? Number(horas) * Number(tarifa)
-    : null
-
-  const canAprobar = esHoras
-    ? Number(horas) > 0 && Number(tarifa) > 0
-    : linea.importeNeto != null
+  const canAprobar = linea.importeNeto != null
 
   function handleAprobar() {
-    if (esHoras) {
-      let ok = true
-      if (!horas || Number(horas) <= 0) { setErrH('Ingresá la cantidad de horas'); ok = false }
-      if (!tarifa || Number(tarifa) <= 0) { setErrT('Ingresá la tarifa por hora'); ok = false }
-      if (!ok) return
-      const neto = Number(horas) * Number(tarifa)
-      const imp  = calcImpuesto(neto, linea.tipoFactura)
-      onAprobar(linea.id, {
-        cantidadHoras: Number(horas),
-        tarifaHora:    Number(tarifa),
-        importeNeto:   neto,
-        impuesto:      imp,
-        importeBruto:  neto + imp,
-        alertas:       linea.alertas?.filter(a => a !== 'horas_no_ingresadas') ?? [],
-      })
-    } else {
-      onAprobar(linea.id, {})
-    }
+    onAprobar(linea.id, {})
   }
 
   const impLabel = labelImp(linea.tipoFactura)
@@ -271,70 +241,33 @@ function CardRevision({ linea, cliente, entidad, servicio, onAprobar, onEditar }
           <BadgesAlerta alertas={linea.alertas} />
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {!esHoras && (
-            <>
-              <div style={{ fontSize: '22px', fontWeight: 700 }}>
-                {fmtMonto(linea.importeBruto, linea.moneda)}
-              </div>
-              {impLabel && (
-                <div style={{ fontSize: '11px', opacity: .5 }}>
-                  Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel}
-                </div>
-              )}
-              {linea.ajusteIPCPendiente && linea.montoConIPC && (
-                <div style={{ fontSize: '11px', color: '#e67e22', marginTop: '2px' }}>
-                  Con IPC: {fmtMonto(linea.montoConIPC, linea.moneda)}
-                </div>
-              )}
-            </>
-          )}
-          {esHoras && montoCalc != null && (
-            <div style={{ fontSize: '22px', fontWeight: 700 }}>
-              {fmtMonto(montoCalc + calcImpuesto(montoCalc, linea.tipoFactura), linea.moneda)}
+          <div style={{ fontSize: '22px', fontWeight: 700 }}>
+            {fmtMonto(linea.importeBruto, linea.moneda)}
+          </div>
+          {impLabel && (
+            <div style={{ fontSize: '11px', opacity: .5 }}>
+              Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel}
             </div>
           )}
-          {esHoras && montoCalc == null && (
-            <div style={{ fontSize: '14px', opacity: .4, fontStyle: 'italic' }}>importe pendiente</div>
+          {linea.ajusteIPCPendiente && linea.montoConIPC && (
+            <div style={{ fontSize: '11px', color: '#e67e22', marginTop: '2px' }}>
+              Con IPC: {fmtMonto(linea.montoConIPC, linea.moneda)}
+            </div>
           )}
         </div>
       </div>
 
-      {esHoras && (
+      {linea.cantidadHoras != null && (
         <div style={{
           background: 'var(--bg-page, #f5f6fa)', borderRadius: '8px',
-          padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px',
+          padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px',
         }}>
           <div style={{ fontSize: '12px', fontWeight: 600, opacity: .6, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-            Ingresá las horas trabajadas
+            Detalle de horas
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <div className="form-group" style={{ flex: 1, margin: 0 }}>
-              <label>Cantidad de horas</label>
-              <input
-                type="number" min="0" step="0.5" className="form-input"
-                placeholder="ej. 4"
-                value={horas}
-                onChange={e => { setHoras(e.target.value); setErrH('') }}
-              />
-              {errH && <div className="form-field-error">{errH}</div>}
-            </div>
-            <div className="form-group" style={{ flex: 1, margin: 0 }}>
-              <label>Tarifa por hora ({linea.moneda})</label>
-              <input
-                type="number" min="0" className="form-input"
-                placeholder="ej. 22840"
-                value={tarifa}
-                onChange={e => { setTarifa(e.target.value); setErrT('') }}
-              />
-              {errT && <div className="form-field-error">{errT}</div>}
-            </div>
+          <div style={{ fontSize: '13px' }}>
+            {linea.cantidadHoras} hs × {fmtMonto(linea.tarifaHora, linea.moneda)} / h
           </div>
-          {montoCalc != null && (
-            <div style={{ fontSize: '12px', opacity: .6 }}>
-              Subtotal: {fmtMonto(montoCalc, linea.moneda)}
-              {impLabel && ` + ${impLabel} = ${fmtMonto(montoCalc + calcImpuesto(montoCalc, linea.tipoFactura), linea.moneda)}`}
-            </div>
-          )}
         </div>
       )}
 
@@ -513,83 +446,102 @@ function CardEnviada({ linea, cliente, entidad, servicio, onVerDetalle }) {
 
 // ─── Drawer Factura ───────────────────────────────────────────────────────────
 
+const STATUS_DRAWER = {
+  revision: { label: 'Pendiente revisión', bg: '#f5f5f5',  color: '#525252' },
+  aprobada: { label: 'Aprobada',           bg: '#f5f5f5',  color: '#525252' },
+  emitida:  { label: 'Emitida',            bg: '#171717',  color: '#fff'    },
+  enviada:  { label: 'Enviada',            bg: '#404040',  color: '#fff'    },
+}
+
 function DrawerFactura({ linea, onClose, clientes, entidades, servicios }) {
   if (!linea) return null
   const cliente  = clientes.find(c => c.id === linea.clienteId)
   const entidad  = entidades.find(e => e.id === linea.entidadId)
   const servicio = servicios.find(s => s.id === linea.servicioId)
   const impLabel = labelImp(linea.tipoFactura)
+  const st       = STATUS_DRAWER[linea.status] || STATUS_DRAWER.revision
+
+  const Row = ({ label, value }) => value ? (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border, #e5e7eb)' }}>
+      <span style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: '13px', fontWeight: 500, textAlign: 'right' }}>{value}</span>
+    </div>
+  ) : null
 
   return (
     <>
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)',
-          zIndex: 199, backdropFilter: 'blur(1px)',
-        }}
-      />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 199, backdropFilter: 'blur(1px)' }} />
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px', maxWidth: '95vw',
-        background: 'var(--bg-card, #fff)', zIndex: 200, overflowY: 'auto',
-        boxShadow: '-4px 0 24px rgba(0,0,0,.12)',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: '400px', maxWidth: '95vw',
+        background: '#fff', zIndex: 200, overflowY: 'auto',
+        boxShadow: '-4px 0 32px rgba(0,0,0,.14)',
         display: 'flex', flexDirection: 'column',
       }}>
+
+        {/* ── Sticky header ── */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '20px 24px 16px', borderBottom: '1px solid var(--border, #e5e7eb)',
-          position: 'sticky', top: 0, background: 'var(--bg-card, #fff)', zIndex: 1,
+          padding: '18px 20px', borderBottom: '1px solid var(--border, #e5e7eb)',
+          position: 'sticky', top: 0, background: '#fff', zIndex: 1,
         }}>
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', opacity: .45 }}>
-              Detalle de factura
-            </div>
-            <div style={{ fontSize: '17px', fontWeight: 700, marginTop: '2px' }}>{linea.nroFactura}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)' }}>Factura</span>
+            <span style={{ fontSize: '15px', fontWeight: 700 }}>{cliente?.nombre || '—'}</span>
           </div>
-          <button
-            onClick={onClose}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', lineHeight: 1, opacity: .5, padding: '4px 8px' }}
-            aria-label="Cerrar"
-          >×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: st.bg, color: st.color }}>{st.label}</span>
+            <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '22px', lineHeight: 1, color: 'var(--gray-400, #a3a3a3)', padding: '2px 6px' }} aria-label="Cerrar">×</button>
+          </div>
         </div>
 
-        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-          <div style={{ textAlign: 'center', padding: '24px 0', borderBottom: '1px solid var(--border, #e5e7eb)' }}>
-            <div style={{ fontSize: '13px', opacity: .5, marginBottom: '6px' }}>Importe total</div>
-            <div style={{ fontSize: '36px', fontWeight: 800, letterSpacing: '-.02em' }}>
-              {fmtMonto(linea.importeBruto, linea.moneda)}
-            </div>
-            {impLabel && (
-              <div style={{ fontSize: '13px', opacity: .5, marginTop: '6px' }}>
-                Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel} ({pctImpLabel(linea.tipoFactura)}) = {fmtMonto(linea.impuesto, linea.moneda)}
-              </div>
-            )}
+        {/* ── Importe hero ── */}
+        <div style={{ padding: '28px 20px 24px', borderBottom: '1px solid var(--border, #e5e7eb)', background: 'var(--gray-50, #fafafa)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', marginBottom: '8px' }}>Importe total</div>
+          <div style={{ fontSize: '38px', fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1 }}>
+            {fmtMonto(linea.importeBruto, linea.moneda)}
           </div>
-
-          {[
-            ['Cliente',      cliente?.nombre],
-            ['Servicio',     servicio?.nombre],
-            ['Entidad',      entidad?.nombre],
-            ['Tipo factura', `Factura ${linea.tipoFactura}`],
-            ['Nro. factura', linea.nroFactura],
-            ['Período',      `${linea.mes?.charAt(0).toUpperCase() + linea.mes?.slice(1)} ${linea.anio}`],
-            ['Emisión',      fmtFecha(linea.fechaEmision)],
-            ['Vencimiento',  fmtFecha(linea.fechaVencimiento)],
-            linea.cantidadHoras ? ['Horas', `${linea.cantidadHoras} h × ${fmtMonto(linea.tarifaHora, linea.moneda)}`] : null,
-            linea.fechaEnvio ? ['Enviada', fmtFecha(linea.fechaEnvio)] : null,
-          ].filter(Boolean).map(([label, value]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', gap: '8px' }}>
-              <span style={{ opacity: .5 }}>{label}</span>
-              <span style={{ fontWeight: 500, textAlign: 'right' }}>{value || '—'}</span>
-            </div>
-          ))}
-
-          {cliente && MOCK_DIRS[cliente.id] && (
-            <div style={{ borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: '16px' }}>
-              <div style={{ fontSize: '12px', opacity: .45, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Dirección fiscal</div>
-              <div style={{ fontSize: '14px' }}>{MOCK_DIRS[cliente.id]}</div>
+          {impLabel && (
+            <div style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', marginTop: '8px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <span>{fmtMonto(linea.importeNeto, linea.moneda)} neto</span>
+              <span style={{ opacity: .4 }}>+</span>
+              <span>{impLabel} {fmtMonto(linea.impuesto, linea.moneda)}</span>
             </div>
           )}
+          {linea.cantidadHoras && (
+            <div style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', marginTop: '4px' }}>
+              {linea.cantidadHoras} h × {fmtMonto(linea.tarifaHora, linea.moneda)}
+            </div>
+          )}
+        </div>
+
+        {/* ── Cuerpo ── */}
+        <div style={{ padding: '0 20px 32px', flex: 1 }}>
+
+          {/* Servicio y entidad */}
+          <div style={{ paddingTop: '4px' }}>
+            <Row label="Servicio"      value={servicio?.nombre} />
+            <Row label="Entidad"       value={entidad?.nombre} />
+            <Row label="Tipo factura"  value={linea.tipoFactura ? `Factura ${linea.tipoFactura}` : null} />
+            <Row label="Nro. factura"  value={linea.nroFactura} />
+          </div>
+
+          {/* Fechas */}
+          <div style={{ marginTop: '16px', paddingTop: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', padding: '8px 0 4px' }}>Fechas</div>
+            <Row label="Período"      value={linea.mes ? `${linea.mes.charAt(0).toUpperCase() + linea.mes.slice(1)} ${linea.anio}` : null} />
+            <Row label="Emisión"      value={fmtFecha(linea.fechaEmision)} />
+            <Row label="Vencimiento"  value={fmtFecha(linea.fechaVencimiento)} />
+            {linea.fechaEnvio && <Row label="Enviada" value={fmtFecha(linea.fechaEnvio)} />}
+          </div>
+
+          {/* Dirección fiscal */}
+          {cliente && MOCK_DIRS[cliente.id] && (
+            <div style={{ marginTop: '20px', padding: '14px 16px', background: 'var(--gray-50, #fafafa)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', marginBottom: '6px' }}>Dirección fiscal</div>
+              <div style={{ fontSize: '13px' }}>{MOCK_DIRS[cliente.id]}</div>
+            </div>
+          )}
+
         </div>
       </div>
     </>
@@ -609,7 +561,7 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
   const [nota,       setNota]       = useState('')
   const [errors,     setErrors]     = useState({})
 
-  const esHoras = servicio?.tipo === 'por_hora' || linea.cantidadHoras != null || linea.alertas?.includes('horas_no_ingresadas')
+  const esHoras = servicio?.tipo === 'por_hora' || linea.cantidadHoras != null
 
   function validate() {
     const e = {}
@@ -631,7 +583,7 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
       const imp  = calcImpuesto(neto, linea.tipoFactura)
       cambios = { ...cambios, cantidadHoras: Number(cantHoras), tarifaHora: Number(tarifaHora),
                   importeNeto: neto, impuesto: imp, importeBruto: neto + imp,
-                  alertas: linea.alertas?.filter(a => a !== 'horas_no_ingresadas') ?? [] }
+                  alertas: linea.alertas ?? [] }
     } else {
       const base  = Number(montoBase)
       const imp   = calcImpuesto(base, linea.tipoFactura)
@@ -1007,7 +959,6 @@ export default function FacturacionMes() {
   const [tabActivo,   setTabActivo]   = useState('revision')
   const [drawerLinea, setDrawerLinea] = useState(null)
   const [lineaEditar, setLineaEditar] = useState(null)
-  const [showNueva,   setShowNueva]   = useState(false)
 
   const btnNuevaRef = useRef(null)
 
@@ -1104,14 +1055,6 @@ export default function FacturacionMes() {
           <h1 className="page-title" style={{ marginBottom: '2px' }}>Facturación del mes</h1>
           <div style={{ fontSize: '13px', opacity: .5 }}>{MES_LABEL}</div>
         </div>
-        <button
-          ref={btnNuevaRef}
-          className="btn-cta"
-          onClick={() => setShowNueva(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-        >
-          <IcoPlus /> Nueva línea
-        </button>
       </div>
 
       {/* Stat cards */}
@@ -1260,16 +1203,6 @@ export default function FacturacionMes() {
         />
       )}
 
-      {/* Modal Nueva */}
-      <ModalNuevaFactura
-        isOpen={showNueva}
-        onClose={() => setShowNueva(false)}
-        onAgregar={agregarLinea}
-        clientes={clientes}
-        entidades={entidades}
-        servicios={servicios}
-        triggerRef={btnNuevaRef}
-      />
     </div>
   )
 }

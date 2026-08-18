@@ -32,7 +32,7 @@ export const LINEAS_INICIAL = [
     status: 'revision',
   },
 
-  // Entelai - Diseño - horas no ingresadas
+  // Entelai - Diseño - servicio por hora
   {
     id: 2,
     clienteId: 5,
@@ -42,15 +42,15 @@ export const LINEAS_INICIAL = [
     tipoFactura: 'A',
     entidadId: 1,
     moneda: 'ARS',
-    cantidadHoras: null,
+    cantidadHoras: 8,
     tarifaHora: 22840,
     montoBase: null,
     montoBaseAnterior: null,
     ajusteIPCPendiente: false,
-    importeNeto: null,
-    impuesto: null,
-    importeBruto: null,
-    alertas: ['horas_no_ingresadas'],
+    importeNeto: 182720,
+    impuesto: 38371,
+    importeBruto: 221091,
+    alertas: [],
     variacionVsMesAnterior: null,
     status: 'revision',
   },
