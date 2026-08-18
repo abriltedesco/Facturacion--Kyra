@@ -1,669 +1,839 @@
-import { useState, useRef, Fragment } from 'react'
-import Modal from '../components/Modal'
+import { useState, useEffect } from 'react'
+import { AJUSTES_INICIAL } from '../data/ajustes'
+import { HISTORIAL_PERIODOS } from '../data/historialPeriodos'
+import { CLIENTES_INICIAL } from '../data/clientes'
+import { ENTIDADES_INICIAL } from '../data/entidades'
+import { SERVICIOS_INICIAL } from '../data/servicios'
 
-const TABS = ['Necesitan revisión', 'Listas para aprobar', 'Aprobadas', 'Historial']
+// ── Período actual ────────────────────────────────────────────────────────────
+const MES_ACTUAL = 'agosto'
+const ANIO_ACTUAL = 2026
+const MES_SIGUIENTE = 'septiembre'
+const TIPOS_AJUSTE = ['IPC', 'Manual', 'Comercial']
 
-/* ── Historial IPC ── */
-const HISTORIAL_IPC = [
-  { id:1, periodo:'Mayo 2026',    pct:'+8,4%',  clientes:11, fecha:'02/05/2026',
-    detalle:[
-      { cliente:'MAPED',      antes:'$ 442.000', despues:'$ 479.100' },
-      { cliente:'EDDING ARG', antes:'$ 480.000', despues:'$ 520.300' },
-      { cliente:'AYAX',       antes:'$ 260.000', despues:'$ 281.800' },
-    ]},
-  { id:2, periodo:'Abril 2026',   pct:'+9,1%',  clientes:10, fecha:'01/04/2026',
-    detalle:[
-      { cliente:'MAPED',      antes:'$ 405.100', despues:'$ 442.000' },
-      { cliente:'TECHCORP',   antes:'US$ 733',   despues:'US$ 800' },
-    ]},
-  { id:3, periodo:'Marzo 2026',   pct:'+11,3%', clientes:12, fecha:'02/03/2026',
-    detalle:[
-      { cliente:'EDDING COL', antes:'US$ 1.402', despues:'US$ 1.560' },
-      { cliente:'GRUPO CL',   antes:'$ 161.700', despues:'$ 180.000' },
-    ]},
-  { id:4, periodo:'Febrero 2026', pct:'+10,0%', clientes:12, fecha:'01/02/2026',
-    detalle:[
-      { cliente:'DRAFTEA',    antes:'$ 563.600', despues:'$ 620.000' },
-    ]},
-]
+// ── Funciones puras ───────────────────────────────────────────────────────────
 
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+function calcularMontoDespues(montoAntes, porcentaje) {
+  const m = parseFloat(montoAntes)
+  const p = parseFloat(porcentaje)
+  if (isNaN(m) || m <= 0 || isNaN(p) || p < 0) return null
+  return Math.round(m * (1 + p / 100))
+}
 
-/* ── Mock data ── */
-const DATA_REVISION_INICIAL = [
-  { id:1, nombre:'MAPED',      tipo:'SRL - Factura A - ARS',   impacto:'Alto impacto',  alerta:'Aumento significativo', ajuste:'+14,2%', monto:'$ 580.800', aplicar:'a aplicar en Julio' },
-  { id:2, nombre:'EDDING COL', tipo:'SRL - Factura LLC - USD', impacto:'Bajo impacto',  alerta:'Aumento significativo', ajuste:'+14,2%', monto:'US$ 1.781', aplicar:'a aplicar en Julio' },
-  { id:3, nombre:'EDDING COL', tipo:'SRL - Factura LLC - USD', impacto:'Alto impacto',  alerta:'Aumento significativo', ajuste:'+14,2%', monto:'US$ 450',   aplicar:'a aplicar en Julio' },
-  { id:4, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS',   impacto:'Alto impacto',  alerta:'Aumento significativo', ajuste:'+14,2%', monto:'$ 420.000', aplicar:'a aplicar en Julio' },
-  { id:5, nombre:'MAPED',      tipo:'SRL - Factura A - ARS',   impacto:'Bajo impacto',  alerta:'Dentro del rango esperado', ajuste:'+8%', monto:'$ 479.100', aplicar:'a aplicar en Julio' },
-]
+function formatARS(valor) {
+  if (valor === null || valor === undefined || valor === '') return '—'
+  const n = Number(valor)
+  if (isNaN(n)) return '—'
+  return '$ ' + n.toLocaleString('es-AR')
+}
 
-const DATA_APROBAR_INICIAL = [
-  { id:1, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS', servicio:'Consultoría mensual - 12hs', base:'480.000 + IVA 21%', monto:'$ 580.800', aplicar:'a aplicar en Julio', ajuste:'+14,2%', margen:'+7%', ok:true },
-  { id:2, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS', servicio:'Consultoría mensual - 12hs', base:'480.000 + IVA 21%', monto:'$ 580.800', aplicar:'a aplicar en Julio', ajuste:'+14,2%', margen:'+7%', ok:true },
-  { id:3, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS', servicio:'Consultoría mensual - 12hs', base:'480.000 + IVA 21%', monto:'$ 580.800', aplicar:'a aplicar en Julio', ajuste:'+14,2%', margen:'+7%', ok:true },
-]
+function formatPct(pct, plus = true) {
+  const n = parseFloat(pct)
+  if (isNaN(n)) return '—'
+  return (plus && n > 0 ? '+' : '') + n.toFixed(1).replace('.', ',') + '%'
+}
 
-const DATA_APROBADAS_INICIAL = [
-  { id:1, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS', servicio:'Consultoría mensual - 12hs', base:'480.000 + IVA 21%', monto:'$ 580.800', aplicar:'a aplicar en Julio', ajuste:'+14,2%', margen:'+7%', ok:true },
-  { id:2, nombre:'EDDING ARG', tipo:'SRL - Factura A - ARS', servicio:'Consultoría mensual - 12hs', base:'480.000 + IVA 21%', monto:'$ 580.800', aplicar:'a aplicar en Julio', ajuste:'+14,2%', margen:'+7%', ok:true },
-]
+// ── Lookups ───────────────────────────────────────────────────────────────────
 
-/* ── Íconos ── */
-const IcoWarn = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-  </svg>
-)
-const IcoCheck = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-    <polyline points="20 6 9 17 4 12"/>
-  </svg>
-)
-const IcoCheckCircle = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-    <polyline points="22 4 12 14.01 9 11.01"/>
-  </svg>
-)
-const IcoEdit = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-  </svg>
-)
-const IcoClock = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-  </svg>
-)
-const IcoEditBig = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-  </svg>
-)
-const IcoCheckBig = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <polyline points="20 6 9 17 4 12"/>
-  </svg>
-)
+function useCliente(clienteId) {
+  return CLIENTES_INICIAL.find(c => c.id === clienteId) || null
+}
 
-/* ──────────────────────────────────────────────
-   Vista de edición de un ajuste individual
-────────────────────────────────────────────── */
-function EditarAjuste({ item, onVolver, onAprobar }) {
-  const [tipo, setTipo]       = useState('IPC')
-  const [pct, setPct]         = useState('14,2')
-  const [antes, setAntes]     = useState('$ x')
-  const [despues, setDespues] = useState('$ x')
-  const [motivo, setMotivo]   = useState('')
+function useEntidadDeCliente(clienteId) {
+  const c = CLIENTES_INICIAL.find(cl => cl.id === clienteId)
+  if (!c) return null
+  return ENTIDADES_INICIAL.find(e => e.id === c.entidadEmisoraId) || null
+}
+
+// ── Atoms UI ──────────────────────────────────────────────────────────────────
+
+function TagCliente() {
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 5,
+      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+      color: '#4f46e5', background: '#eef2ff',
+    }}>Cliente</span>
+  )
+}
+
+function BadgeAlerta({ alerta }) {
+  if (alerta) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+        color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d',
+      }}>⚠ Aumento significativo</span>
+    )
+  }
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+      color: '#065f46', background: '#d1fae5', border: '1px solid #6ee7b7',
+    }}>✓ Dentro del rango esperado</span>
+  )
+}
+
+function BadgeImpacto({ nivel }) {
+  const alto = nivel === 'alto'
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 7px', borderRadius: 5,
+      fontSize: 11, fontWeight: 600,
+      color: alto ? '#b91c1c' : '#6b7280',
+      background: alto ? '#fee2e2' : '#f3f4f6',
+    }}>{alto ? 'Alto' : 'Bajo'} impacto</span>
+  )
+}
+
+function BadgeStatus({ status }) {
+  const cfg = {
+    aprobada:  { label: '✓ Aprobada',  color: '#065f46', bg: '#d1fae5' },
+    rechazada: { label: '× Rechazada', color: '#b91c1c', bg: '#fee2e2' },
+  }[status] || { label: status, color: '#6b7280', bg: '#f3f4f6' }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '4px 10px', borderRadius: 8,
+      fontSize: 12, fontWeight: 700, color: cfg.color, background: cfg.bg,
+    }}>{cfg.label}</span>
+  )
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
+function StatCard({ label, count, color, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, minWidth: 150, padding: '18px 22px', textAlign: 'left',
+        background: active ? color + '12' : '#fff',
+        border: '1.5px solid ' + (active ? color : '#e5e7eb'),
+        borderRadius: 12, cursor: 'pointer',
+        transition: 'border-color 0.15s, background 0.15s',
+        boxShadow: active ? '0 0 0 3px ' + color + '20' : 'none',
+      }}
+    >
+      <div style={{ fontSize: 34, fontWeight: 800, color, lineHeight: 1.1 }}>{count}</div>
+      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 5, fontWeight: 500 }}>{label}</div>
+    </button>
+  )
+}
+
+// ── Card: Necesitan revisión ──────────────────────────────────────────────────
+
+function CardRevision({ ajuste, servicios, onEditar }) {
+  const cliente = useCliente(ajuste.clienteId)
+  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const svc = servicios.find(s => s.id === ajuste.servicioId)
+  const montoDespues = calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
 
   return (
-    <div className="ajuste-edit-page">
-      <h1 className="page-title">Editar ajustes pendientes</h1>
-      <p className="page-subtitle">Revisá la propuesta de ajuste y definí si corresponde aplicarla.</p>
+    <div style={{
+      background: '#fff',
+      border: '1.5px solid ' + (ajuste.alertaAumentoSignificativo ? '#fcd34d' : '#e5e7eb'),
+      borderRadius: 12, padding: '18px 22px', marginBottom: 12,
+      boxShadow: ajuste.alertaAumentoSignificativo ? '0 2px 8px #fef3c750' : '0 1px 3px #0001',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+
+        {/* Info cliente + servicio */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <TagCliente />
+            {ajuste.alertaAumentoSignificativo && <BadgeAlerta alerta={true} />}
+          </div>
+          <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span>{entidad?.nombre || '—'}</span>
+            <span>·</span>
+            <span>Factura {cliente?.tipoFactura || '—'}</span>
+            <span>·</span>
+            <span>{svc?.moneda || 'ARS'}</span>
+            <span>·</span>
+            <BadgeImpacto nivel={ajuste.impactoNivel} />
+          </div>
+          <div style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>
+            {svc?.nombre || '—'}
+            {svc?.descripcion ? <span style={{ color: '#9ca3af', fontWeight: 400 }}> — {svc.descripcion}</span> : null}
+          </div>
+        </div>
+
+        {/* Porcentaje + montos */}
+        <div style={{
+          textAlign: 'center', padding: '0 22px',
+          borderLeft: '1px solid #f3f4f6', borderRight: '1px solid #f3f4f6',
+          minWidth: 160,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Ajuste IPC</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#4f46e5', lineHeight: 1 }}>{formatPct(ajuste.porcentajeIPC)}</div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+            {ajuste.montoAntes !== null
+              ? <>antes {formatARS(ajuste.montoAntes)}<br />ahora {formatARS(montoDespues)}</>
+              : <span style={{ color: '#d97706', fontWeight: 600 }}>Sin precio definido</span>
+            }
+          </div>
+        </div>
+
+        {/* Botón editar */}
+        <div>
+          <button
+            onClick={() => onEditar(ajuste)}
+            style={{
+              padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+              color: '#4f46e5', background: '#eef2ff', border: '1.5px solid #a5b4fc',
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            EDITAR ✏
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ── Card: Listas para aprobar / Aprobadas ─────────────────────────────────────
+
+function CardAprobacion({ ajuste, servicios, onAprobar, onRechazar, esHistorial }) {
+  const cliente = useCliente(ajuste.clienteId)
+  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const svc = servicios.find(s => s.id === ajuste.servicioId)
+  const montoDespues = ajuste.montoDespues ?? calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
+  const impactoMensual = (ajuste.montoAntes !== null && montoDespues !== null)
+    ? montoDespues - ajuste.montoAntes : null
+
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1.5px solid ' + (esHistorial ? '#d1fae5' : '#e5e7eb'),
+      borderRadius: 12, padding: '18px 22px', marginBottom: 12,
+      boxShadow: '0 1px 3px #0001',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+
+        {/* Columna izq: monto grande */}
+        <div style={{ minWidth: 200 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <TagCliente />
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+            {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: '#111827', lineHeight: 1 }}>
+            {formatARS(montoDespues)}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
+            a aplicar en {MES_SIGUIENTE}
+          </div>
+          {esHistorial && ajuste.fechaAprobacion && (
+            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
+              Aprobado: {ajuste.fechaAprobacion}
+            </div>
+          )}
+        </div>
+
+        {/* Centro: detalle IPC */}
+        <div style={{ flex: 1, borderLeft: '1px solid #f3f4f6', paddingLeft: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5 }}>Ajuste IPC</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: '#4f46e5', marginBottom: 5 }}>{formatPct(ajuste.porcentajeIPC)}</div>
+          <div style={{ fontSize: 13, color: '#374151', marginBottom: 5 }}>
+            Antes: {formatARS(ajuste.montoAntes)} → Ahora: {formatARS(montoDespues)}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
+            Margen proyectado: +{ajuste.contexto?.margenProyectado ?? '—'}%
+          </div>
+          <BadgeAlerta alerta={ajuste.alertaAumentoSignificativo} />
+          {ajuste.motivo && (
+            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8, fontStyle: 'italic' }}>
+              "{ajuste.motivo}"
+            </div>
+          )}
+        </div>
+
+        {/* Columna der: servicio + acciones */}
+        <div style={{ minWidth: 180, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{svc?.nombre || '—'}</div>
+            {svc?.descripcion && <div style={{ fontSize: 12, color: '#9ca3af' }}>{svc.descripcion}</div>}
+            {impactoMensual !== null && (
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                Impacto: +{formatARS(impactoMensual)}/mes
+              </div>
+            )}
+          </div>
+
+          {!esHistorial ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                onClick={() => onRechazar(ajuste.id)}
+                style={{
+                  padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  color: '#dc2626', background: '#fff', border: '1.5px solid #fca5a5',
+                  cursor: 'pointer',
+                }}
+              >RECHAZAR ×</button>
+              <button
+                onClick={() => onAprobar(ajuste.id)}
+                style={{
+                  padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  color: '#fff', background: '#4f46e5', border: 'none', cursor: 'pointer',
+                }}
+              >APROBAR ✓</button>
+            </div>
+          ) : (
+            <BadgeStatus status={ajuste.status} />
+          )}
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ── Historial de períodos ─────────────────────────────────────────────────────
+
+function TabHistorial() {
+  return (
+    <div>
+      <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 20 }}>
+        Períodos anteriores ya cerrados.
+      </p>
+      {HISTORIAL_PERIODOS.map(p => (
+        <div key={p.mes + p.anio} style={{
+          background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12,
+          padding: '16px 22px', marginBottom: 10,
+          display: 'flex', alignItems: 'center', gap: 20,
+        }}>
+          <div style={{ minWidth: 130 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', textTransform: 'capitalize' }}>
+              {p.mes} {p.anio}
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', minWidth: 80 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#4f46e5' }}>{formatPct(p.porcentajeIPC)}</div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>IPC aplicado</div>
+          </div>
+          <div style={{ display: 'flex', gap: 24, flex: 1 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#374151' }}>{p.totalAjustes}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>ajustes</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#059669' }}>{p.aprobados}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>aprobados</div>
+            </div>
+            {p.rechazados > 0 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, fontSize: 16, color: '#dc2626' }}>{p.rechazados}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>rechazados</div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Pantalla de edición (Pantalla 3) ─────────────────────────────────────────
+
+function PaginaEditar({ ajuste, servicios, onGuardar, onAprobar, onCancelar }) {
+  const [form, setForm] = useState({
+    tipo: ajuste.tipoAjuste || 'IPC',
+    porcentaje: String(ajuste.porcentajeIPC),
+    montoAntes: ajuste.montoAntes !== null && ajuste.montoAntes !== undefined ? String(ajuste.montoAntes) : '',
+    motivo: ajuste.motivo || '',
+  })
+
+  const cliente = useCliente(ajuste.clienteId)
+  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const svc = servicios.find(s => s.id === ajuste.servicioId)
+
+  const pct = parseFloat(form.porcentaje)
+  const monto = parseFloat(form.montoAntes)
+  const pctValido = !isNaN(pct) && pct >= 0 && pct <= 100
+  const montoValido = !isNaN(monto) && monto > 0
+  const sinPrecio = form.montoAntes === '' || form.montoAntes === null
+
+  const montoDespues = (pctValido && montoValido) ? calcularMontoDespues(form.montoAntes, form.porcentaje) : null
+  const impactoMensual = montoDespues !== null && montoValido ? montoDespues - monto : null
+  const impactoAnual = impactoMensual !== null ? impactoMensual * 12 : null
+
+  const puedeAprobar = pctValido && montoValido
+
+  const chF = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
+
+  const buildCambios = () => ({
+    tipoAjuste: form.tipo,
+    porcentajeIPC: pct,
+    montoAntes: montoValido ? monto : null,
+    montoDespues,
+    motivo: form.motivo,
+  })
+
+  return (
+    <div>
 
       {/* Banner informativo */}
-      <div className="ajuste-banner">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-        <span>Este mes se aplica ajuste IPC, al aprobar, se desbloquea el cálculo en Facturación.</span>
+      <div style={{
+        background: '#eef2ff', border: '1px solid #a5b4fc', borderRadius: 10,
+        padding: '12px 20px', marginBottom: 28,
+        display: 'flex', alignItems: 'center', gap: 10,
+        fontSize: 13, color: '#3730a3', fontWeight: 500,
+      }}>
+        <span style={{ fontSize: 16 }}>ℹ</span>
+        Este mes se aplica ajuste IPC. Al aprobar, se desbloquea el cálculo en Facturación del mes.
       </div>
 
-      {/* Header card — 3 columnas */}
-      <div className="ajuste-header-card">
-        <div className="ajuste-hc-col">
-          <div className="ajuste-hc-nombre">{item.nombre}</div>
-          <div className="ajuste-hc-tipo">{item.tipo} · Alto impacto</div>
-          <div className="ajuste-hc-alerta"><IcoWarn /> Alto impacto</div>
-          <span className="fac-badge-cliente">Cliente</span>
+      {/* Encabezado */}
+      <h1 className="page-title" style={{ marginBottom: 4 }}>
+        Editar ajuste — {cliente?.nombre || '—'}
+      </h1>
+      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 22 }}>
+        {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'} · {ajuste.impactoNivel === 'alto' ? '🔴 Alto impacto' : '🟢 Bajo impacto'}
+      </div>
+
+      {/* Card resumen del ajuste */}
+      <div style={{
+        background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12,
+        padding: '18px 22px', marginBottom: 14,
+        display: 'flex', alignItems: 'center', gap: 20,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <TagCliente />
+            {ajuste.impactoNivel === 'alto' && (
+              <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2' }}>
+                ⚠ Alto impacto
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 13, color: '#6b7280' }}>
+            {svc?.nombre || '—'} · {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+          </div>
         </div>
-        <div className="ajuste-hc-col ajuste-hc-mid">
-          <div className="ajuste-hc-sub">Ajuste propuesto (IPC)</div>
-          <div className="ajuste-hc-pct">+14,2%</div>
-          <div className="ajuste-hc-range">Antes $x · Ahora $x</div>
-        </div>
-        <div className="ajuste-hc-col">
-          <div className="ajuste-hc-sub">Riesgo detectado</div>
-          <div className="ajuste-hc-riesgo"><IcoWarn /> Aumento significativo</div>
-          <div className="ajuste-hc-vs">Vs. últimos 3 ajustes</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#4f46e5', lineHeight: 1 }}>
+            {formatPct(form.porcentaje)}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>
+            antes {form.montoAntes ? formatARS(form.montoAntes) : '—'} → ahora {formatARS(montoDespues)}
+          </div>
         </div>
       </div>
 
-      {/* Grid principal — 2 columnas */}
-      <div className="ajuste-main-grid">
+      {/* Alerta de riesgo */}
+      {ajuste.alertaAumentoSignificativo && (
+        <div style={{
+          background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10,
+          padding: '14px 18px', marginBottom: 20,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+        }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>⚠</span>
+          <div>
+            <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 3 }}>
+              Riesgo detectado: Aumento significativo
+            </div>
+            <div style={{ fontSize: 13, color: '#b45309' }}>
+              Vs. últimos 3 ajustes del cliente. Revisá si el porcentaje es apropiado antes de aprobar.
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Formulario */}
-        <div className="ajuste-form-card">
-          <h2 className="ajuste-form-title">Ajuste propuesto</h2>
-          <div className="ajuste-form-row">
-            <div className="ajuste-form-field">
-              <label htmlFor="af-tipo">Tipo de ajuste</label>
-              <select id="af-tipo" value={tipo} onChange={e => setTipo(e.target.value)}>
-                <option>IPC</option>
-                <option>Manual</option>
-                <option>Dólar</option>
-              </select>
-            </div>
-            <div className="ajuste-form-field">
-              <label htmlFor="af-pct">Porcentaje de ajuste</label>
-              <div className="ajuste-pct-wrap">
-                <input id="af-pct" type="text" value={pct} onChange={e => setPct(e.target.value)} />
-                <span className="ajuste-pct-sym">%</span>
-              </div>
-            </div>
+      {/* Layout 2 columnas */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 28 }}>
+
+        {/* Columna izquierda: formulario */}
+        <div style={{ background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, padding: '24px' }}>
+          <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#111827' }}>
+            Ajuste propuesto
+          </h3>
+
+          {/* Tipo de ajuste */}
+          <div className="form-group">
+            <label htmlFor="ea-tipo">Tipo de ajuste</label>
+            <select id="ea-tipo" className="form-select" name="tipo" value={form.tipo} onChange={chF} style={{ maxWidth: 200 }}>
+              {TIPOS_AJUSTE.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
-          <div className="ajuste-form-row">
-            <div className="ajuste-form-field">
-              <label htmlFor="af-antes">
-                Monto antes del ajuste{' '}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginLeft: 3, verticalAlign: 'middle' }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-              </label>
-              <input id="af-antes" type="text" value={antes} onChange={e => setAntes(e.target.value)} />
+
+          {/* Porcentaje */}
+          <div className="form-group">
+            <label htmlFor="ea-pct">Porcentaje de ajuste <span className="label-req">*</span></label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                id="ea-pct"
+                className={'form-input' + (!pctValido && form.porcentaje !== '' ? ' input-error' : '')}
+                name="porcentaje" type="number" min="0" max="100" step="0.1"
+                value={form.porcentaje} onChange={chF}
+                style={{ maxWidth: 110 }}
+              />
+              <span style={{ fontWeight: 700, color: '#374151', fontSize: 16 }}>%</span>
             </div>
-            <div className="ajuste-form-field">
-              <label htmlFor="af-despues">
-                Monto después del ajuste{' '}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginLeft: 3, verticalAlign: 'middle' }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-              </label>
-              <input id="af-despues" type="text" value={despues} onChange={e => setDespues(e.target.value)} />
-            </div>
+            {!pctValido && form.porcentaje !== '' && (
+              <span className="field-error">El porcentaje debe estar entre 0 y 100</span>
+            )}
           </div>
-          <div className="ajuste-form-field">
-            <label htmlFor="af-motivo">Motivo (opcional)</label>
-            <textarea
-              id="af-motivo" rows={6} maxLength={300}
-              placeholder="Escribí un comentario si necesitás dejar contexto sobre este ajuste..."
-              value={motivo} onChange={e => setMotivo(e.target.value)}
+
+          {/* Monto antes */}
+          <div className="form-group">
+            <label htmlFor="ea-antes">Monto antes del ajuste <span className="label-req">*</span></label>
+            <input
+              id="ea-antes"
+              className={'form-input' + (sinPrecio ? ' input-error' : '')}
+              name="montoAntes" type="number" min="0" step="100"
+              value={form.montoAntes} onChange={chF}
+              placeholder="Ingresá el monto actual del servicio"
+              style={{ maxWidth: 260 }}
             />
-            <div className="char-count">{motivo.length}/300</div>
+            {sinPrecio && (
+              <span className="field-error">
+                Este servicio no tiene precio definido. Ingresá el monto actual antes de aprobar.
+              </span>
+            )}
+          </div>
+
+          {/* Monto después (solo lectura, calculado) */}
+          <div className="form-group">
+            <label>Monto después del ajuste</label>
+            <div style={{
+              padding: '10px 14px', background: '#f9fafb',
+              border: '1.5px solid #e5e7eb', borderRadius: 8,
+              fontSize: 20, fontWeight: 700, color: '#111827',
+              maxWidth: 260,
+            }}>
+              {montoDespues !== null ? formatARS(montoDespues) : '—'}
+            </div>
+            <span className="field-hint">Calculado automáticamente: monto × (1 + % / 100)</span>
+          </div>
+
+          {/* Motivo */}
+          <div className="form-group">
+            <label htmlFor="ea-motivo">Motivo (opcional)</label>
+            <textarea
+              id="ea-motivo" className="form-textarea" name="motivo"
+              value={form.motivo} onChange={chF}
+              maxLength={300} rows={3}
+              placeholder="ej: Ajuste IPC bimestral — período jun/ago 2026"
+            />
+            <span className="field-hint">{form.motivo.length}/300 caracteres</span>
           </div>
         </div>
 
-        {/* Contexto del cliente */}
-        <div className="ajuste-context-card">
-          <h2 className="ajuste-form-title">Contexto del cliente</h2>
-          <div className="ajuste-ctx-block">
-            <div className="ajuste-ctx-row">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <div>
-                <div className="ajuste-ctx-label">Último aumento</div>
-                <div className="ajuste-ctx-val">Hace 4 meses</div>
-              </div>
+        {/* Columna derecha: contexto del cliente */}
+        <div style={{ background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, padding: '24px' }}>
+          <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#111827' }}>
+            Contexto del cliente
+          </h3>
+
+          {[
+            { label: 'Último aumento', value: 'Hace ' + ajuste.contexto.ultimoAumentoHaceMeses + ' meses' },
+            { label: 'Variación acumulada anual', value: '+' + ajuste.contexto.variacionAcumuladaAnual + '%' },
+            { label: 'Margen proyectado', value: '+' + ajuste.contexto.margenProyectado + '%' },
+          ].map(item => (
+            <div key={item.label} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 0', borderBottom: '1px solid #f3f4f6',
+            }}>
+              <span style={{ fontSize: 13, color: '#6b7280' }}>{item.label}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{item.value}</span>
             </div>
-            <div className="ajuste-ctx-row">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
-              </svg>
-              <div>
-                <div className="ajuste-ctx-label">Variación acumulada anual</div>
-                <div className="ajuste-ctx-val">+39%</div>
-              </div>
-            </div>
-            <div className="ajuste-ctx-row">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-              <div>
-                <div className="ajuste-ctx-label">Márgen proyectado</div>
-                <div className="ajuste-ctx-val">+7%</div>
-              </div>
-            </div>
+          ))}
+
+          {/* Monto nuevo destacado */}
+          <div style={{
+            marginTop: 18, padding: '14px', background: '#f8fafc',
+            borderRadius: 8, border: '1px solid #e5e7eb',
+          }}>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>En base al nuevo monto</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#111827' }}>{formatARS(montoDespues)}</div>
           </div>
-          <div className="ajuste-ctx-impact">
-            <div className="ajuste-impact-row">
-              <span className="ajuste-impact-label">En base al nuevo monto</span>
-              <span className="ajuste-impact-val">$ x</span>
-            </div>
-            <div className="ajuste-impact-row">
-              <span className="ajuste-impact-label">Impacto mensual</span>
-              <span className="ajuste-impact-val">$ x</span>
-            </div>
-            <div className="ajuste-impact-row">
-              <span className="ajuste-impact-label">Impacto anual proyectado</span>
-              <span className="ajuste-impact-val"><strong>Impacto estimado</strong></span>
-            </div>
+
+          {/* Impacto */}
+          <div style={{ marginTop: 14 }}>
+            {[
+              { label: 'Impacto mensual', value: impactoMensual !== null ? (impactoMensual >= 0 ? '+' : '') + formatARS(impactoMensual) : '—' },
+              { label: 'Impacto anual proyectado', value: impactoAnual !== null ? (impactoAnual >= 0 ? '+' : '') + formatARS(impactoAnual) : '—' },
+            ].map(item => (
+              <div key={item.label} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '9px 0', borderBottom: '1px solid #f3f4f6',
+              }}>
+                <span style={{ fontSize: 13, color: '#6b7280' }}>{item.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5' }}>{item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
+
       </div>
+
+      {/* Aviso si no puede aprobar */}
+      {sinPrecio && (
+        <div style={{
+          background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8,
+          padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#92400e',
+        }}>
+          ⚠ Completá el campo <strong>Monto antes del ajuste</strong> para poder aprobar.
+        </div>
+      )}
 
       {/* Footer de acciones */}
-      <div className="ajuste-edit-footer">
-        <button className="btn-cancelar" onClick={onVolver}>CANCELAR</button>
-        <div className="ajuste-footer-right">
-          <button className="btn-guardar ready">GUARDAR CAMBIOS</button>
-          <button className="btn-aprobar-fac" onClick={() => onAprobar && onAprobar(item)}>
-            APROBAR <IcoCheck />
-          </button>
-        </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <button
+          onClick={onCancelar}
+          style={{
+            padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            color: '#6b7280', background: '#fff', border: '1.5px solid #e5e7eb', cursor: 'pointer',
+          }}
+        >CANCELAR</button>
+        <button
+          onClick={() => onGuardar(ajuste.id, buildCambios())}
+          style={{
+            padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+            color: '#4f46e5', background: '#eef2ff', border: '1.5px solid #a5b4fc', cursor: 'pointer',
+          }}
+        >GUARDAR CAMBIOS</button>
+        <button
+          onClick={() => puedeAprobar && onAprobar(ajuste.id, buildCambios())}
+          disabled={!puedeAprobar}
+          style={{
+            padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+            color: '#fff',
+            background: puedeAprobar ? '#4f46e5' : '#c7d2fe',
+            border: 'none',
+            cursor: puedeAprobar ? 'pointer' : 'not-allowed',
+          }}
+        >APROBAR ✓</button>
       </div>
 
-      <button className="ajuste-volver" onClick={onVolver}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-          <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-        </svg>
-        {' '}Volver
-      </button>
+      <div style={{ textAlign: 'center' }}>
+        <button
+          onClick={onCancelar}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13 }}
+        >
+          ← Volver a Ajustes pendientes
+        </button>
+      </div>
+
     </div>
   )
 }
 
-/* ──────────────────────────────────────────────
-   Card compartida para Listas para aprobar / Aprobadas
-────────────────────────────────────────────── */
-function AjusteAprobarCard({ r, onRechazar, onAprobar, esAprobada = false }) {
-  return (
-    <div className="ajuste-aprobar-card">
-      {/* Col izquierda */}
-      <div className="ajuste-aprobar-left">
-        <div className="ajuste-aprobar-nombre-row">
-          <span className="fac-card-nombre">{r.nombre}</span>
-          <span className="fac-badge-cliente">Cliente</span>
-        </div>
-        <div className="fac-card-tipo">{r.tipo}</div>
-        <div className="ajuste-aprobar-monto">{r.monto}</div>
-        <div className="ajuste-aprobar-aplicar">{r.aplicar}</div>
-      </div>
+// ── Componente principal ──────────────────────────────────────────────────────
 
-      {/* Col central */}
-      <div className="ajuste-aprobar-mid">
-        <div className="ajuste-rev-tipo-label">Ajuste IPC</div>
-        <div className="ajuste-rev-pct">{r.ajuste}</div>
-        <div className="ajuste-rev-range">Antes $x · Ahora $x</div>
-        <div className="ajuste-rev-range">Margen proyectado: {r.margen}</div>
-        {r.ok && (
-          <div className="ajuste-ok">
-            <IcoCheckCircle /> Dentro del rango esperado.
-          </div>
-        )}
-      </div>
+const TABS = [
+  { key: 'revision',      label: 'Necesitan revisión' },
+  { key: 'lista_aprobar', label: 'Listas para aprobar' },
+  { key: 'aprobada',      label: 'Aprobadas' },
+  { key: 'historial',     label: 'Historial' },
+]
 
-      {/* Col derecha */}
-      <div className="ajuste-aprobar-right-col">
-        <div className="ajuste-service-name">{r.servicio}</div>
-        <div className="ajuste-service-base">{r.base}</div>
-        <div className="ajuste-aprobar-actions">
-          <button
-            className="btn-rechazar"
-            onClick={() => onRechazar && onRechazar(r.id)}
-          >
-            RECHAZAR ×
-          </button>
-          <button
-            className={'btn-aprobar-fac' + (esAprobada ? ' btn-aprobado-state' : '')}
-            onClick={() => !esAprobada && onAprobar && onAprobar(r)}
-            disabled={esAprobada}
-            aria-label={esAprobada ? 'Ya aprobado' : 'Aprobar ajuste'}
-          >
-            APROBAR ✓
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ──────────────────────────────────────────────
-   Componente principal
-────────────────────────────────────────────── */
 export default function AjustesPendientes() {
-  const [tab, setTab]             = useState(0)
-  const [editItem, setEditItem]   = useState(null)
+  useEffect(() => { document.title = 'Ajustes IPC — IPM Kyra' }, [])
 
-  /* listas mutables */
-  const [revision, setRevision]       = useState([...DATA_REVISION_INICIAL])
-  const [listaAprobar, setListaAprobar] = useState([...DATA_APROBAR_INICIAL])
-  const [listaAprobadas, setListaAprobadas] = useState([...DATA_APROBADAS_INICIAL])
+  const [ajustes, setAjustes] = useState(AJUSTES_INICIAL)
+  const [servicios, setServicios] = useState(SERVICIOS_INICIAL)
+  const [tabActivo, setTabActivo] = useState('revision')
+  const [ajusteEnEdicion, setAjusteEnEdicion] = useState(null)
 
-  /* modal IPC */
-  const [ipcOpen, setIpcOpen]   = useState(false)
-  const [ipcMes, setIpcMes]     = useState('')
-  const [ipcAnio, setIpcAnio]   = useState('2026')
-  const [ipcPct, setIpcPct]     = useState('')
-  const [toast, setToast]       = useState(null)
+  // Conteos para stat cards
+  const countRevision    = ajustes.filter(a => a.status === 'revision').length
+  const countListaApro   = ajustes.filter(a => a.status === 'lista_aprobar').length
+  const countAprobada    = ajustes.filter(a => a.status === 'aprobada' || a.status === 'rechazada').length
 
-  /* historial */
-  const [expandido, setExpandido] = useState(null)
+  // ── Lógica de negocio ─────────────────────────────────────────────────────
 
-  const btnIpcRef = useRef(null)
+  function aprobarAjuste(ajusteId, cambios) {
+    const hoy = new Date().toISOString().slice(0, 10)
+    const ajuste = ajustes.find(a => a.id === ajusteId)
+    if (!ajuste) return
 
-  const pctNum     = parseFloat(String(ipcPct).replace(',', '.'))
-  const ipcValido  = ipcMes && !isNaN(pctNum) && pctNum > 0
-  const clientesAfectados = ipcValido ? 12 : 0
+    const montoNuevo = cambios.montoDespues
+    const motivo = cambios.motivo || ('Ajuste IPC ' + ajuste.mes + ' ' + ajuste.anio)
 
-  function showToast(msg) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3500)
+    // Actualizar ajuste
+    setAjustes(prev => prev.map(a =>
+      a.id !== ajusteId ? a : {
+        ...a,
+        ...cambios,
+        status: 'aprobada',
+        fechaAprobacion: hoy,
+      }
+    ))
+
+    // Actualizar servicio en Módulo 3
+    if (montoNuevo !== null) {
+      setServicios(prev => prev.map(s => {
+        if (s.id !== ajuste.servicioId) return s
+        const valorAnterior = s.tipo === 'fijo' ? s.montoBase : s.tarifaHora
+        const historial = [
+          { fecha: hoy, valorAnterior, valorNuevo: montoNuevo, motivo },
+          ...(s.historialPrecios || []),
+        ]
+        return {
+          ...s,
+          montoBase:   s.tipo === 'fijo'     ? montoNuevo : s.montoBase,
+          tarifaHora:  s.tipo === 'por_hora' ? montoNuevo : s.tarifaHora,
+          historialPrecios: historial,
+        }
+      }))
+    }
+
+    setAjusteEnEdicion(null)
+    setTabActivo('aprobada')
   }
 
-  function generarAjustes() {
-    if (!ipcValido) return
-    setIpcOpen(false)
-    setTab(0)
-    showToast('Se generaron ' + clientesAfectados + ' ajustes para ' + ipcMes + ' ' + ipcAnio)
+  function rechazarAjuste(ajusteId) {
+    const hoy = new Date().toISOString().slice(0, 10)
+    setAjustes(prev => prev.map(a =>
+      a.id !== ajusteId ? a : { ...a, status: 'rechazada', fechaAprobacion: hoy }
+    ))
   }
 
-  /* ── Handlers de aprobación ── */
-  function handleAprobarDesdeAprobar(row) {
-    setListaAprobar(prev => prev.filter(r => r.id !== row.id))
-    setListaAprobadas(prev => [...prev, row])
-    showToast('Ajuste aprobado')
+  function guardarCambios(ajusteId, cambios) {
+    setAjustes(prev => prev.map(a =>
+      a.id !== ajusteId ? a : {
+        ...a,
+        ...cambios,
+        status: 'lista_aprobar',
+        alertaAumentoSignificativo: false, // ya fue revisado
+      }
+    ))
+    setAjusteEnEdicion(null)
+    setTabActivo('lista_aprobar')
   }
 
-  function handleRechazarDesdeAprobar(id) {
-    setListaAprobar(prev => prev.filter(r => r.id !== id))
-    showToast('Ajuste rechazado')
-  }
+  // Ajustes del tab activo
+  const ajustesFiltrados = ajustes.filter(a => {
+    if (tabActivo === 'revision')      return a.status === 'revision'
+    if (tabActivo === 'lista_aprobar') return a.status === 'lista_aprobar'
+    if (tabActivo === 'aprobada')      return a.status === 'aprobada' || a.status === 'rechazada'
+    return false
+  })
 
-  function handleRechazarDesdeAprobadas(id) {
-    const row = listaAprobadas.find(r => r.id === id)
-    if (!row) return
-    setListaAprobadas(prev => prev.filter(r => r.id !== id))
-    setListaAprobar(prev => [...prev, row])
-    showToast('Aprobación revertida')
-  }
+  // ── Pantalla de edición ───────────────────────────────────────────────────
 
-  function handleAprobarDesdeEditar(item) {
-    setEditItem(null)
-    setRevision(prev => prev.filter(r => r.id !== item.id))
-    setListaAprobadas(prev => [...prev, { ...item, servicio: 'Consultoría mensual - 12hs', base: '480.000 + IVA 21%', margen: '+7%', ok: true }])
-    setTab(2)
-    showToast('Ajuste aprobado desde edición')
-  }
-
-  function handleTabKey(e, idx) {
-    if (e.key === 'ArrowRight') { e.preventDefault(); setTab((idx + 1) % TABS.length) }
-    if (e.key === 'ArrowLeft')  { e.preventDefault(); setTab((idx + TABS.length - 1) % TABS.length) }
-  }
-
-  /* ── Vista de edición (ocupa pantalla completa) ── */
-  if (editItem) {
+  if (ajusteEnEdicion) {
     return (
-      <EditarAjuste
-        item={editItem}
-        onVolver={() => setEditItem(null)}
-        onAprobar={handleAprobarDesdeEditar}
+      <PaginaEditar
+        ajuste={ajusteEnEdicion}
+        servicios={servicios}
+        onGuardar={guardarCambios}
+        onAprobar={aprobarAjuste}
+        onCancelar={() => setAjusteEnEdicion(null)}
       />
     )
   }
 
+  // ── Pantalla principal ────────────────────────────────────────────────────
+
   return (
-    <div className="ajustes-page">
+    <div>
+      <h1 className="page-title" style={{ textTransform: 'capitalize' }}>
+        Ajustes pendientes de {MES_ACTUAL} {ANIO_ACTUAL}
+      </h1>
+      <p style={{ color: '#6b7280', fontSize: 14, marginTop: -6, marginBottom: 28 }}>
+        Revisá y gestioná los ajustes para subir precios a clientes y honorarios al equipo.
+      </p>
 
-      {/* Header con CTA */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Ajustes pendientes de Junio 2026</h1>
-          <p className="page-subtitle">Revisá y gestioná los ajustes para subir precios a clientes y honorarios al equipo.</p>
-        </div>
-        <div className="page-header-actions">
-          <button
-            ref={btnIpcRef}
-            className="btn-cta"
-            onClick={() => { setIpcOpen(true); setIpcMes(''); setIpcPct('') }}
-          >
-            NUEVA ACTUALIZACIÓN IPC
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
-        </div>
+      {/* Stat cards */}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 32 }}>
+        <StatCard
+          label="Pendientes revisión"
+          count={countRevision}
+          color="#d97706"
+          active={tabActivo === 'revision'}
+          onClick={() => setTabActivo('revision')}
+        />
+        <StatCard
+          label="Listas para aprobar"
+          count={countListaApro}
+          color="#4f46e5"
+          active={tabActivo === 'lista_aprobar'}
+          onClick={() => setTabActivo('lista_aprobar')}
+        />
+        <StatCard
+          label="Aprobadas"
+          count={countAprobada}
+          color="#059669"
+          active={tabActivo === 'aprobada'}
+          onClick={() => setTabActivo('aprobada')}
+        />
       </div>
 
-      {/* ── Stat cards ── */}
-      <div className="ajustes-stat-cards">
-        {[
-          { icon: <IcoClock />,    label: 'Pendientes revisión', val: revision.length,       sub: 'ajustes pendientes' },
-          { icon: <IcoEditBig />,  label: 'Listas para aprobar', val: listaAprobar.length,   sub: 'ajustes pendientes' },
-          { icon: <IcoCheckBig />, label: 'Aprobadas',           val: listaAprobadas.length, sub: 'ajustes pendientes' },
-        ].map(c => (
-          <div key={c.label} className="ajuste-stat-card">
-            <div className="ajuste-stat-icon">{c.icon}</div>
-            <div className="ajuste-stat-body">
-              <div className="ajuste-stat-label">{c.label}</div>
-              <div className="ajuste-stat-value">{c.val}</div>
-              <div className="ajuste-stat-sub">{c.sub}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Tabs ── */}
-      <div role="tablist" className="subtabs fac-tabs" aria-label="Estado de ajustes">
-        {TABS.map((t, i) => (
-          <button
-            key={t} role="tab"
-            id={`ajust-tab-${i}`}
-            aria-selected={tab === i}
-            aria-controls={`ajust-panel-${i}`}
-            tabIndex={tab === i ? 0 : -1}
-            className={'subtab' + (tab === i ? ' active' : '')}
-            onClick={() => setTab(i)}
-            onKeyDown={e => handleTabKey(e, i)}
-          >{t}</button>
-        ))}
-      </div>
-
-      {/* ── Panel 0: Necesitan revisión ── */}
-      <div role="tabpanel" id="ajust-panel-0" aria-labelledby="ajust-tab-0" hidden={tab !== 0}>
-        <div className="fac-card-list">
-          {revision.length === 0 && (
-            <div className="fac-empty-state">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-              Sin ajustes pendientes de revisión
-            </div>
-          )}
-          {revision.map(r => (
-            <div key={r.id} className="ajuste-revision-card">
-              {/* Col izquierda */}
-              <div className="ajuste-rev-left">
-                <div className="fac-card-nombre">{r.nombre}</div>
-                <div className="fac-card-tipo">{r.tipo} · {r.impacto}</div>
-                <div className="ajuste-rev-monto">{r.monto}</div>
-                <div className="ajuste-rev-aplicar">{r.aplicar}</div>
-                <div className="fac-card-alerta">
-                  <IcoWarn /> {r.alerta}
-                </div>
-                <span className="fac-badge-cliente">Cliente</span>
-              </div>
-
-              {/* Col central */}
-              <div className="ajuste-rev-mid">
-                <div className="ajuste-rev-tipo-label">Ajuste IPC</div>
-                <div className="ajuste-rev-pct">{r.ajuste}</div>
-                <div className="ajuste-rev-range">Antes $x · Ahora $x</div>
-              </div>
-
-              {/* Col derecha */}
-              <div className="ajuste-rev-right">
-                <button className="btn-editar-fac" onClick={() => setEditItem(r)}>
-                  EDITAR <IcoEdit />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Panel 1: Listas para aprobar ── */}
-      <div role="tabpanel" id="ajust-panel-1" aria-labelledby="ajust-tab-1" hidden={tab !== 1}>
-        <div className="fac-card-list">
-          {listaAprobar.length === 0 && (
-            <div className="fac-empty-state">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-              Todos los ajustes fueron procesados
-            </div>
-          )}
-          {listaAprobar.map(r => (
-            <AjusteAprobarCard
-              key={r.id}
-              r={r}
-              onRechazar={handleRechazarDesdeAprobar}
-              onAprobar={handleAprobarDesdeAprobar}
-              esAprobada={false}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* ── Panel 2: Aprobadas ── */}
-      <div role="tabpanel" id="ajust-panel-2" aria-labelledby="ajust-tab-2" hidden={tab !== 2}>
-        <div className="fac-card-list">
-          {listaAprobadas.length === 0 && (
-            <div className="fac-empty-state">No hay ajustes aprobados aún</div>
-          )}
-          {listaAprobadas.map(r => (
-            <AjusteAprobarCard
-              key={r.id}
-              r={r}
-              onRechazar={handleRechazarDesdeAprobadas}
-              onAprobar={null}
-              esAprobada={true}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* ── Panel 3: Historial ── */}
-      <div role="tabpanel" id="ajust-panel-3" aria-labelledby="ajust-tab-3" hidden={tab !== 3}>
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">PERÍODO</th>
-                <th scope="col">% IPC APLICADO</th>
-                <th scope="col">CLIENTES ACTUALIZADOS</th>
-                <th scope="col">FECHA DE APLICACIÓN</th>
-                <th scope="col" style={{ width: 120 }}><span className="sr-only">Detalle</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {HISTORIAL_IPC.map(h => (
-                <Fragment key={h.id}>
-                  <tr>
-                    <td>{h.periodo}</td>
-                    <td className="td-muted">{h.pct}</td>
-                    <td className="td-muted">{h.clientes} clientes</td>
-                    <td className="td-muted">{h.fecha}</td>
-                    <td>
-                      <button
-                        className="btn-ver-detalle"
-                        aria-expanded={expandido === h.id}
-                        onClick={() => setExpandido(expandido === h.id ? null : h.id)}
-                      >
-                        {expandido === h.id ? 'CERRAR' : 'VER DETALLE'}
-                      </button>
-                    </td>
-                  </tr>
-                  {expandido === h.id && (
-                    <tr className="hist-detalle-row">
-                      <td colSpan={5}>
-                        <div className="hist-detalle">
-                          {h.detalle.map(d => (
-                            <div key={d.cliente} className="hist-detalle-item">
-                              <span className="hist-detalle-cliente">{d.cliente}</span>
-                              <span className="hist-detalle-montos">
-                                {d.antes} → <strong>{d.despues}</strong>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Modal: Nueva actualización IPC ── */}
-      <Modal
-        isOpen={ipcOpen}
-        onClose={() => setIpcOpen(false)}
-        title="NUEVA ACTUALIZACIÓN IPC"
-        triggerRef={btnIpcRef}
-        footer={
-          <div className="modal-footer-inner">
-            <div className="modal-validation">
-              {!ipcValido && ipcPct !== '' && (
-                <span>Ingresá un período y un % válido</span>
-              )}
-            </div>
+      {/* Tabs */}
+      <div role="tablist" aria-label="Secciones de ajustes IPC" className="subtabs" style={{ marginBottom: 24 }}>
+        {TABS.map(tab => {
+          const count = tab.key === 'revision' ? countRevision
+                      : tab.key === 'lista_aprobar' ? countListaApro
+                      : tab.key === 'aprobada' ? countAprobada : null
+          return (
             <button
-              className={'btn-guardar' + (ipcValido ? ' ready' : '')}
-              onClick={generarAjustes}
+              key={tab.key}
+              role="tab"
+              aria-selected={tabActivo === tab.key}
+              className={'subtab' + (tabActivo === tab.key ? ' active' : '')}
+              onClick={() => setTabActivo(tab.key)}
             >
-              Generar ajustes
+              {tab.label}
+              {count !== null && count > 0 && (
+                <span style={{
+                  marginLeft: 6, minWidth: 18, height: 18, padding: '0 5px',
+                  borderRadius: 9, fontSize: 11, fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: tabActivo === tab.key ? '#4f46e5' : '#e5e7eb',
+                  color: tabActivo === tab.key ? '#fff' : '#374151',
+                }}>{count}</span>
+              )}
             </button>
-          </div>
-        }
-      >
-        <p className="reenvio-desc">
-          Ingresá el % de IPC acumulado del período. El sistema va a generar los ajustes
-          pendientes para todos los clientes con actualización activa ese mes.
-        </p>
-        <div className="form-row">
-          <div className="form-group">
-            <label htmlFor="ipc-mes">Mes</label>
-            <select id="ipc-mes" className="form-select" value={ipcMes} onChange={e => setIpcMes(e.target.value)}>
-              <option value="" />
-              {MESES.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label htmlFor="ipc-anio">Año</label>
-            <select id="ipc-anio" className="form-select" value={ipcAnio} onChange={e => setIpcAnio(e.target.value)}>
-              {['2026', '2027'].map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label htmlFor="ipc-pct">% acumulado de IPC</label>
-          <div className="ajuste-pct-wrap">
-            <input
-              id="ipc-pct"
-              className="form-input"
-              inputMode="decimal"
-              placeholder="14,2"
-              value={ipcPct}
-              onChange={e => setIpcPct(e.target.value)}
-            />
-            <span className="ajuste-pct-sym">%</span>
-          </div>
-        </div>
-        {ipcValido && (
-          <div className="ipc-preview">
-            <div className="ipc-preview-title">Vista previa</div>
-            <div className="ipc-preview-row">
-              <span>Clientes afectados</span>
-              <strong>{clientesAfectados}</strong>
-            </div>
-            <div className="ipc-preview-row">
-              <span>Aumento promedio estimado</span>
-              <strong>+{ipcPct}% sobre el monto actual</strong>
-            </div>
-            <div className="ipc-preview-row">
-              <span>Se aplica en</span>
-              <strong>{ipcMes} {ipcAnio}</strong>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )
+        })}
+      </div>
 
-      {toast && (
-        <div className="toast" role="status" aria-live="polite">{toast}</div>
+      {/* Contenido del tab */}
+      {tabActivo === 'historial' ? (
+        <TabHistorial />
+      ) : ajustesFiltrados.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '56px 24px', color: '#9ca3af', fontSize: 14 }}>
+          {tabActivo === 'revision'      ? 'No hay ajustes pendientes de revisión para este período.' :
+           tabActivo === 'lista_aprobar' ? 'No hay ajustes listos para aprobar todavía.' :
+                                          'No hay ajustes aprobados en este período.'}
+        </div>
+      ) : (
+        <div>
+          {tabActivo === 'revision' && ajustesFiltrados.map(a => (
+            <CardRevision
+              key={a.id}
+              ajuste={a}
+              servicios={servicios}
+              onEditar={setAjusteEnEdicion}
+            />
+          ))}
+          {(tabActivo === 'lista_aprobar' || tabActivo === 'aprobada') && ajustesFiltrados.map(a => (
+            <CardAprobacion
+              key={a.id}
+              ajuste={a}
+              servicios={servicios}
+              onAprobar={id => aprobarAjuste(id, {
+                tipoAjuste: a.tipoAjuste,
+                porcentajeIPC: a.porcentajeIPC,
+                montoAntes: a.montoAntes,
+                montoDespues: a.montoDespues ?? calcularMontoDespues(a.montoAntes, a.porcentajeIPC),
+                motivo: a.motivo,
+              })}
+              onRechazar={rechazarAjuste}
+              esHistorial={tabActivo === 'aprobada'}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
