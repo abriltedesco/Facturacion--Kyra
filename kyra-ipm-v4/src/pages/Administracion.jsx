@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import Modal from '../components/Modal'
 import { ENTIDADES_INICIAL } from '../data/entidades'
 import { CLIENTES_INICIAL } from '../data/clientes'
-import { SERVICIOS_INICIAL } from '../data/servicios'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
 const PAGE_SIZE = 10
@@ -129,30 +128,66 @@ function ArcaBadge({ arca }) {
   )
 }
 
-// ── Helpers para Servicios ───────────────────────────────────────────────────
-
-const CATALOGO_SERVICIOS = [
-  'Google Ads', 'Social Ads', 'Social Media', 'SEO', 'Email MKT',
-  'Diseño', 'Mantenimiento UX/UI', 'Hosting Mensual', 'Moderación', 'Otro',
+const SERVICIOS_DATA = [
+  { id: 1,  nombre: 'Social Media',     tipo: 'Fijo',     precioBase: '$85,000',  moneda: 'ARS', clientesActivos: 6, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 85000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 74000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 64000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-02-01', precio: 56000, motivo: 'Ajuste IPC' },
+      { fecha: '2024-08-01', precio: 48000, motivo: 'Ajuste IPC' },
+      { fecha: '2024-02-01', precio: 40000, motivo: 'Precio inicial' },
+    ] },
+  { id: 2,  nombre: 'Diseño UX/UI',     tipo: 'Fijo',     precioBase: '$120,000', moneda: 'ARS', clientesActivos: 3, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 120000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 104000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 90000,  motivo: 'Ajuste IPC' },
+      { fecha: '2025-02-01', precio: 78000,  motivo: 'Ajuste IPC' },
+      { fecha: '2024-08-01', precio: 67000,  motivo: 'Ajuste IPC' },
+      { fecha: '2024-02-01', precio: 58000,  motivo: 'Precio inicial' },
+    ] },
+  { id: 3,  nombre: 'Dev a medida',     tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo',   historialPrecios: [] },
+  { id: 4,  nombre: 'Reporting',        tipo: 'Fijo',     precioBase: '$4,500',   moneda: 'USD', clientesActivos: 1, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-06-01', precio: 4500, motivo: 'Ajuste tarifario' },
+      { fecha: '2025-01-01', precio: 4000, motivo: 'Precio inicial' },
+    ] },
+  { id: 5,  nombre: 'Consultoría',      tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo',   historialPrecios: [] },
+  { id: 6,  nombre: 'SEO',             tipo: 'Fijo',     precioBase: '$60,000',  moneda: 'ARS', clientesActivos: 4, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 60000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 52000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 45000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-02-01', precio: 39000, motivo: 'Ajuste IPC' },
+      { fecha: '2024-08-01', precio: 33000, motivo: 'Ajuste IPC' },
+      { fecha: '2024-02-01', precio: 28000, motivo: 'Precio inicial' },
+    ] },
+  { id: 7,  nombre: 'Branding',        tipo: 'Fijo',     precioBase: '$250,000', moneda: 'ARS', clientesActivos: 1, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 250000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 217000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 188000, motivo: 'Ajuste IPC' },
+    ] },
+  { id: 8,  nombre: 'Email Marketing', tipo: 'Fijo',     precioBase: '$65,000',  moneda: 'ARS', clientesActivos: 3, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 65000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 56000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 49000, motivo: 'Precio inicial' },
+    ] },
+  { id: 9,  nombre: 'SEM',             tipo: 'Fijo',     precioBase: '$75,000',  moneda: 'ARS', clientesActivos: 2, estado: 'Inactivo',
+    historialPrecios: [
+      { fecha: '2026-04-01', precio: 75000, motivo: 'Último ajuste' },
+      { fecha: '2025-10-01', precio: 65000, motivo: 'Ajuste IPC' },
+    ] },
+  { id: 10, nombre: 'Contenido',       tipo: 'Fijo',     precioBase: '$70,000',  moneda: 'ARS', clientesActivos: 5, estado: 'Activo',
+    historialPrecios: [
+      { fecha: '2026-08-01', precio: 70000, motivo: 'Ajuste IPC' },
+      { fecha: '2026-02-01', precio: 61000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-08-01', precio: 53000, motivo: 'Ajuste IPC' },
+      { fecha: '2025-02-01', precio: 46000, motivo: 'Precio inicial' },
+    ] },
 ]
-const PERIODICIDADES = ['mensual', 'quincenal', 'anual', 'único']
-const ESTADOS_SERVICIO = ['activo', 'pausado', 'finalizado']
-
-function formatPrecioServicio(svc) {
-  if (svc.tipo === 'fijo') {
-    if (!svc.montoBase && svc.montoBase !== 0) return '—'
-    return svc.moneda === 'USD'
-      ? 'USD ' + Number(svc.montoBase).toLocaleString('es-AR')
-      : '$ ' + Number(svc.montoBase).toLocaleString('es-AR')
-  }
-  if (svc.tipo === 'por_hora') {
-    if (!svc.tarifaHora && svc.tarifaHora !== 0) return '—'
-    return (svc.moneda === 'USD'
-      ? 'USD ' + Number(svc.tarifaHora).toLocaleString('es-AR')
-      : '$ ' + Number(svc.tarifaHora).toLocaleString('es-AR')) + '/h'
-  }
-  return '—'
-}
 
 // ── Forms ────────────────────────────────────────────────────────────────────
 
@@ -164,11 +199,7 @@ const EMPTY_CLIENTE = {
 }
 const EMPTY_PROVEEDOR = { nombre: '', email: '', tipoServicio: '', metodoPago: '', destino: '', cuit: '' }
 const EMPTY_ENTIDAD   = { nombre: '', tipo: '', identificacion: '', comprobanteDefault: '' }
-const EMPTY_SERVICIO  = {
-  clienteId: '', nombre: '', descripcion: '',
-  tipo: 'fijo', montoBase: '', tarifaHora: '',
-  moneda: 'ARS', periodicidad: 'mensual',
-}
+const EMPTY_SERVICIO  = { nombre: '', tipoSvc: 'Fijo', precioBase: '', moneda: 'ARS', estadoInicial: true }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -230,7 +261,8 @@ export default function Administracion() {
   const [clientes, setClientes] = useState(CLIENTES_INICIAL)
   const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
   const [entidades, setEntidades] = useState(ENTIDADES_INICIAL)
-  const [servicios, setServicios] = useState(SERVICIOS_INICIAL)
+  const [servicios, setServicios] = useState(SERVICIOS_DATA)
+  const [editingServicio, setEditingServicio] = useState(null)
 
   const [openModal, setOpenModal] = useState(null) // 'cliente'|'proveedor'|'entidad'|'servicio'|null
   const [showDropdown, setShowDropdown] = useState(false)
@@ -245,16 +277,38 @@ export default function Administracion() {
 
   // Estado extra para el modal de Entidades
   const [editingEntidad, setEditingEntidad] = useState(null) // null = crear, objeto = editar
-
-  // Estado extra para el modal de Servicios
-  const [editingServicio, setEditingServicio] = useState(null) // null = crear, objeto = editar
-  const [filtroCliente, setFiltroCliente] = useState('')
   const [cuentasList, setCuentasList] = useState([{ banco: '', moneda: 'ARS' }])
   const [arcaArchivo, setArcaArchivo] = useState(false)
+  const [arcaFileName, setArcaFileName] = useState('')
+  const [arcaBlobUrl, setArcaBlobUrl] = useState('')
+  const [arcaDriveUrl, setArcaDriveUrl] = useState('')
+  const [arcaDragOver, setArcaDragOver] = useState(false)
+  const [arcaCopied, setArcaCopied] = useState(false)
+  const [arcaShared, setArcaShared] = useState(false)
   const [arcaVencimiento, setArcaVencimiento] = useState('')
+  const arcaInputRef = useRef(null)
+
+  function arcaCargarArchivo(file) {
+    if (!file) return
+    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
+    const url = URL.createObjectURL(file)
+    setArcaArchivo(true)
+    setArcaFileName(file.name)
+    setArcaBlobUrl(url)
+  }
+
+  function arcaQuitarArchivo() {
+    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
+    setArcaArchivo(false)
+    setArcaFileName('')
+    setArcaBlobUrl('')
+    setArcaVencimiento('')
+  }
   const [ccList, setCcList] = useState([])
   const [ccInput, setCcInput] = useState('')
   const [rowMenuOpen, setRowMenuOpen] = useState(null)
+  const [expandedServicio, setExpandedServicio] = useState(null)
+  const [historialAnio, setHistorialAnio] = useState(String(new Date().getFullYear()))
   const rowMenuRef = useRef(null)
 
   const [search, setSearch] = useState('')
@@ -331,36 +385,13 @@ export default function Administracion() {
     setRowMenuOpen(null)
   }
 
-  function openEditServicio(svc) {
-    setEditingServicio(svc)
-    setFormS({
-      clienteId: String(svc.clienteId),
-      nombre: svc.nombre || '',
-      descripcion: svc.descripcion || '',
-      tipo: svc.tipo || 'fijo',
-      montoBase: svc.montoBase !== null && svc.montoBase !== undefined ? String(svc.montoBase) : '',
-      tarifaHora: svc.tarifaHora !== null && svc.tarifaHora !== undefined ? String(svc.tarifaHora) : '',
-      moneda: svc.moneda || 'ARS',
-      periodicidad: svc.periodicidad || 'mensual',
-    })
-    setSubmitted(false)
-    setOpenModal('servicio')
-  }
-
-  function handleToggleEstadoServicio(id) {
-    setServicios(prev => prev.map(s => {
-      if (s.id !== id) return s
-      const next = s.estado === 'activo' ? 'pausado' : 'activo'
-      return { ...s, estado: next }
-    }))
-    setRowMenuOpen(null)
-  }
-
   function openEditEntidad(entidad) {
     setEditingEntidad(entidad)
     setFormE({ nombre: entidad.nombre, tipo: entidad.tipo, identificacion: entidad.identificacion, comprobanteDefault: entidad.comprobanteDefault })
     setCuentasList(entidad.cuentas.length > 0 ? entidad.cuentas.map(c => ({ ...c })) : [{ banco: '', moneda: 'ARS' }])
     setArcaArchivo(entidad.arca?.archivoSubido ?? false)
+    setArcaFileName(entidad.arca?.fileName ?? '')
+    setArcaDriveUrl(entidad.arca?.driveUrl ?? '')
     setArcaVencimiento(entidad.arca?.vencimiento ?? '')
     setSubmitted(false)
     setOpenModal('entidad')
@@ -371,17 +402,13 @@ export default function Administracion() {
   const filtered = currentData.filter(r => {
     const q = search.toLowerCase()
     const cuentasStr = Array.isArray(r.cuentas) ? r.cuentas.map(c => c.banco).join(' ') : (r.cuentaBancaria || '')
-    // Para servicios, también buscar por nombre del cliente
-    const clienteNombre = tab === 3 ? (clientes.find(c => c.id === r.clienteId)?.nombre || '') : ''
     const matchSearch = !q
       || r.nombre.toLowerCase().includes(q)
       || (r.mail || r.email || '').toLowerCase().includes(q)
       || (r.identificacionFiscal || r.identificacion || '').toLowerCase().includes(q)
       || cuentasStr.toLowerCase().includes(q)
-      || clienteNombre.toLowerCase().includes(q)
-    const matchEstado = !filtroEstado || String(r.estado).toLowerCase() === filtroEstado.toLowerCase()
-    const matchCliente = tab !== 3 || !filtroCliente || String(r.clienteId) === filtroCliente
-    return matchSearch && matchEstado && matchCliente
+    const matchEstado = !filtroEstado || String(r.estado).toUpperCase() === filtroEstado.toUpperCase()
+    return matchSearch && matchEstado
   })
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -399,15 +426,6 @@ export default function Administracion() {
   const chP = e => setFormP(p => ({ ...p, [e.target.name]: e.target.value }))
   const chE = e => setFormE(p => ({ ...p, [e.target.name]: e.target.value }))
   const chS = e => setFormS(p => ({ ...p, [e.target.name]: e.target.value }))
-
-  // Al seleccionar cliente en el form de servicio, sugerir moneda según su entidad
-  const chClienteServicio = e => {
-    const clienteId = e.target.value
-    const cliente = clientes.find(c => String(c.id) === clienteId)
-    const entidad = cliente ? entidades.find(en => en.id === cliente.entidadEmisoraId) : null
-    const monedaSugerida = entidad?.tipo === 'LLC' ? 'USD' : 'ARS'
-    setFormS(p => ({ ...p, clienteId, moneda: monedaSugerida }))
-  }
 
   // Al cambiar tipo de entidad, pre-seleccionar comprobante por defecto
   const chETipo = e => {
@@ -450,7 +468,7 @@ export default function Administracion() {
   const isReadyC = formC.nombre && formC.entidadEmisoraId && formC.tipoFactura && formC.pais && formC.impuestoAdicional !== ''
   const isReadyP = formP.nombre && formP.email && formP.destino
   const isReadyE = formE.nombre && formE.tipo && cuentasList.some(c => c.banco.trim())
-  const isReadyS = formS.clienteId && formS.nombre && formS.tipo && formS.moneda && formS.periodicidad
+  const isReadyS = formS.nombre && formS.tipoSvc
 
   const guardarC = () => {
     setSubmitted(true)
@@ -498,7 +516,7 @@ export default function Administracion() {
     if (!isReadyE) return
     const cuentasLimpias = cuentasList.filter(c => c.banco.trim())
     const arcaData = esArgentina(formE.tipo)
-      ? { archivoSubido: arcaArchivo, vencimiento: arcaVencimiento }
+      ? { archivoSubido: arcaArchivo, fileName: arcaFileName, driveUrl: arcaDriveUrl, vencimiento: arcaVencimiento }
       : null
 
     if (editingEntidad) {
@@ -527,76 +545,49 @@ export default function Administracion() {
 
     setFormE(EMPTY_ENTIDAD)
     setCuentasList([{ banco: '', moneda: 'ARS' }])
+    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
     setArcaArchivo(false)
+    setArcaFileName('')
+    setArcaBlobUrl('')
+    setArcaDriveUrl('')
     setArcaVencimiento('')
     setEditingEntidad(null)
     setSubmitted(false)
     setOpenModal(null)
     setTab(2)
   }
+  function handleToggleServicio(id) {
+    setServicios(prev => prev.map(s =>
+      s.id === id ? { ...s, estado: s.estado === 'Activo' ? 'Inactivo' : 'Activo' } : s
+    ))
+    setRowMenuOpen(null)
+  }
+
+  function openEditServicio(servicio) {
+    setEditingServicio(servicio)
+    setFormS({
+      nombre: servicio.nombre || '',
+      tipoSvc: servicio.tipo || 'Fijo',
+      precioBase: servicio.precioBase !== '—' ? servicio.precioBase : '',
+      moneda: servicio.moneda || 'ARS',
+      estadoInicial: servicio.estado === 'Activo',
+    })
+    setSubmitted(false)
+    setOpenModal('servicio')
+  }
+
   const guardarS = () => {
     setSubmitted(true)
     if (!isReadyS) return
-
-    const montoBase = formS.tipo === 'fijo' && formS.montoBase !== '' ? parseFloat(formS.montoBase) : null
-    const tarifaHora = formS.tipo === 'por_hora' && formS.tarifaHora !== '' ? parseFloat(formS.tarifaHora) : null
-    const hoy = new Date().toISOString().slice(0, 10)
-
     if (editingServicio) {
-      setServicios(prev => prev.map(s => {
-        if (s.id !== editingServicio.id) return s
-        // Detectar cambio de precio para historial
-        const historial = [...(s.historialPrecios || [])]
-        const precioAnterior = s.tipo === 'fijo' ? s.montoBase : s.tarifaHora
-        const precioNuevo = formS.tipo === 'fijo' ? montoBase : tarifaHora
-        if (precioNuevo !== null && precioNuevo !== precioAnterior) {
-          historial.unshift({
-            fecha: hoy,
-            valorAnterior: precioAnterior,
-            valorNuevo: precioNuevo,
-            motivo: 'Actualización manual',
-          })
-        }
-        return {
-          ...s,
-          clienteId: Number(formS.clienteId),
-          nombre: formS.nombre,
-          descripcion: formS.descripcion,
-          tipo: formS.tipo,
-          montoBase,
-          tarifaHora,
-          moneda: formS.moneda,
-          periodicidad: formS.periodicidad,
-          estado: editingServicio.estado,
-          historialPrecios: historial,
-        }
-      }))
+      setServicios(prev => prev.map(s => s.id === editingServicio.id
+        ? { ...s, nombre: formS.nombre, tipo: formS.tipoSvc, precioBase: formS.tipoSvc === 'Fijo' ? formS.precioBase : '—', moneda: formS.moneda, estado: formS.estadoInicial ? 'Activo' : 'Inactivo' }
+        : s
+      ))
     } else {
-      const historial = []
-      const precioInicial = formS.tipo === 'fijo' ? montoBase : tarifaHora
-      if (precioInicial !== null) {
-        historial.push({ fecha: hoy, valorAnterior: null, valorNuevo: precioInicial, motivo: 'Precio inicial' })
-      }
-      setServicios(prev => [{
-        id: Date.now(),
-        clienteId: Number(formS.clienteId),
-        nombre: formS.nombre,
-        descripcion: formS.descripcion,
-        tipo: formS.tipo,
-        montoBase,
-        tarifaHora,
-        moneda: formS.moneda,
-        periodicidad: formS.periodicidad,
-        estado: 'activo',
-        historialPrecios: historial,
-      }, ...prev])
+      setServicios(p => [{ id: Date.now(), nombre: formS.nombre, estado: formS.estadoInicial ? 'Activo' : 'Inactivo', tipo: formS.tipoSvc, precioBase: formS.tipoSvc === 'Fijo' ? formS.precioBase : '—', moneda: formS.moneda, clientesActivos: 0 }, ...p])
     }
-
-    setFormS(EMPTY_SERVICIO)
-    setEditingServicio(null)
-    setSubmitted(false)
-    setOpenModal(null)
-    setTab(3)
+    setFormS(EMPTY_SERVICIO); setEditingServicio(null); setSubmitted(false); setOpenModal(null); setTab(3)
   }
 
   const footerFor = (isReady, onSave) => (
@@ -811,70 +802,144 @@ export default function Administracion() {
       </table>
     )
 
-    // tab === 3: Servicios por cliente
+    // tab === 3: Servicios (catálogo global — T13)
     return (
-      <table>
-        <thead><tr>
-          <th scope="col">CLIENTE</th>
-          <th scope="col">SERVICIO</th>
-          <th scope="col">TIPO</th>
-          <th scope="col">PRECIO</th>
-          <th scope="col">MONEDA</th>
-          <th scope="col">PERIODICIDAD</th>
-          <th scope="col">ESTADO</th>
-          <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
-        </tr></thead>
-        <tbody>
-          {pageRows.length === 0
-            ? <tr><td colSpan={8} className="td-empty">Sin resultados</td></tr>
-            : pageRows.map(r => {
-                const clienteNombre = clientes.find(c => c.id === r.clienteId)?.nombre || '—'
+      <>
+        <table>
+          <thead><tr>
+            <th scope="col">NOMBRE</th>
+            <th scope="col">TIPO</th>
+            <th scope="col">PRECIO BASE</th>
+            <th scope="col">MONEDA</th>
+            <th scope="col">CLIENTES ACTIVOS</th>
+            <th scope="col">ESTADO</th>
+            <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
+          </tr></thead>
+          <tbody>
+            {pageRows.length === 0
+              ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
+              : pageRows.map(r => {
+                const isExpanded = expandedServicio === r.id
+                const historial  = r.historialPrecios ?? []
+                const aniosDisp  = [...new Set(historial.map(h => h.fecha.slice(0,4)))].sort((a,b) => b-a)
+                const anioFiltro = historialAnio
+                const histFiltrado = historial.filter(h => h.fecha.startsWith(anioFiltro))
+
+                function fmtPrecioH(p, mon) {
+                  if (!p) return '—'
+                  return mon === 'USD'
+                    ? 'US$ ' + Number(p).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : '$ '  + Number(p).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                }
+                function fmtFechaH(iso) {
+                  if (!iso) return '—'
+                  const [y, m] = iso.split('-')
+                  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+                  return `${meses[parseInt(m,10)-1]} ${y}`
+                }
+
                 return (
-                  <tr key={r.id} className="tr-clickable" onClick={() => openEditServicio(r)}>
-                    <td><span className="link-nro">{clienteNombre}</span></td>
-                    <td>
-                      <strong>{r.nombre}</strong>
-                      {r.descripcion && <span className="td-muted" style={{ marginLeft: 6, fontSize: 12 }}>({r.descripcion})</span>}
-                    </td>
-                    <td className="td-muted">{r.tipo === 'fijo' ? 'Fijo' : 'Por hora'}</td>
-                    <td>{formatPrecioServicio(r)}</td>
-                    <td><span className="moneda-badge">{r.moneda}</span></td>
-                    <td className="td-muted" style={{ textTransform: 'capitalize' }}>{r.periodicidad}</td>
-                    <td>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                        fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
-                        color: r.estado === 'activo' ? '#1a9e5c' : r.estado === 'pausado' ? '#d97706' : '#6b7280',
-                        background: r.estado === 'activo' ? '#d1fae5' : r.estado === 'pausado' ? '#fef3c7' : '#f3f4f6',
-                      }}>{r.estado}</span>
-                    </td>
-                    <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
-                      <button className="dots-btn" aria-label={'Opciones ' + r.nombre} aria-expanded={rowMenuOpen === r.id}
-                        onClick={() => setRowMenuOpen(prev => prev === r.id ? null : r.id)}>⋮</button>
-                      {rowMenuOpen === r.id && (
-                        <div className="row-menu" ref={rowMenuRef} role="menu">
-                          <button className="row-menu-item" role="menuitem" onClick={() => { openEditServicio(r); setRowMenuOpen(null) }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                            Editar
-                          </button>
-                          <button className="row-menu-item" role="menuitem" onClick={() => handleToggleEstadoServicio(r.id)}>
-                            {r.estado === 'activo'
-                              ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Pausar</>
-                              : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
-                            }
-                          </button>
+                  <>
+                    <tr key={r.id} style={{ cursor: historial.length ? 'pointer' : 'default' }}
+                      onClick={() => {
+                        if (!historial.length) return
+                        setExpandedServicio(prev => prev === r.id ? null : r.id)
+                      }}
+                    >
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {historial.length > 0 && (
+                            <span style={{ fontSize: 10, opacity: .4, transition: 'transform .15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          )}
+                          <strong>{r.nombre}</strong>
                         </div>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="td-muted">{r.tipo}</td>
+                      <td>{r.precioBase}</td>
+                      <td><span className="moneda-badge">{r.moneda}</span></td>
+                      <td className="td-muted">{r.clientesActivos}</td>
+                      <td><Badge estado={r.estado} /></td>
+                      <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
+                        <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                          onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                        {rowMenuOpen === r.id && (
+                          <div className="row-menu" ref={rowMenuRef} role="menu">
+                            <button className="row-menu-item" role="menuitem" onClick={() => { openEditServicio(r); setRowMenuOpen(null) }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                              Editar
+                            </button>
+                            <button className="row-menu-item" role="menuitem" onClick={() => handleToggleServicio(r.id)}>
+                              {r.estado === 'Activo'
+                                ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
+                                : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
+                              }
+                            </button>
+                            <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                              </svg>
+                              Eliminar
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={r.id + '-hist'}>
+                        <td colSpan={7} style={{ padding: 0, background: 'var(--bg-page, #f5f6fa)' }}>
+                          <div style={{ padding: '14px 20px 16px' }}>
+                            {/* Header historial + filtro año */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', opacity: .5 }}>
+                                Historial de precios
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 12, opacity: .5 }}>Año:</span>
+                                <select
+                                  value={anioFiltro}
+                                  onChange={e => setHistorialAnio(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, padding: '3px 8px', background: '#fff', cursor: 'pointer' }}
+                                >
+                                  {aniosDisp.map(a => <option key={a} value={a}>{a}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            {/* Filas de historial */}
+                            {histFiltrado.length === 0 ? (
+                              <div style={{ fontSize: 13, opacity: .4, textAlign: 'center', padding: '12px 0' }}>
+                                Sin ajustes registrados en {anioFiltro}
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {histFiltrado.map((h, i) => (
+                                  <div key={i} style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    background: '#fff', borderRadius: 8, padding: '8px 14px',
+                                    border: '1px solid #e5e7eb', fontSize: 13,
+                                  }}>
+                                    <span style={{ opacity: .55, minWidth: 70 }}>{fmtFechaH(h.fecha)}</span>
+                                    <span style={{ flex: 1, paddingLeft: 16, opacity: .7 }}>{h.motivo || '—'}</span>
+                                    <span style={{ fontWeight: 700 }}>{fmtPrecioH(h.precio, r.moneda)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )
               })
-          }
-        </tbody>
-      </table>
+            }
+          </tbody>
+        </table>
+        <p className="servicios-nota">Los precios y condiciones por cliente se configuran en el perfil de cada cliente.</p>
+      </>
     )
   }
 
@@ -885,19 +950,8 @@ export default function Administracion() {
       {/* Single toolbar row: filter + search + export + import + NUEVO dropdown */}
       <div className="admin-toolbar">
         <FilterBox id="admin-estado" label="Estado"
-          options={tab === 0 ? ['Activo', 'Inactivo'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva'] : ['activo', 'pausado', 'finalizado']}
+          options={tab === 0 ? ['Activo', 'Inactivo'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva'] : ['Activo', 'Inactivo']}
           value={filtroEstado} onChange={v => { setFiltroEstado(v); setPage(1) }} />
-        {tab === 3 && (
-          <FilterBox id="admin-cliente" label="Cliente"
-            options={clientes.map(c => ({ value: String(c.id), label: c.nombre })).map(o => o.label)}
-            value={filtroCliente ? (clientes.find(c => String(c.id) === filtroCliente)?.nombre || '') : ''}
-            onChange={v => {
-              const found = clientes.find(c => c.nombre === v)
-              setFiltroCliente(found ? String(found.id) : '')
-              setPage(1)
-            }}
-          />
-        )}
 
         <div className="search-wrap">
           <label htmlFor="admin-search" className="sr-only">Buscar</label>
@@ -934,7 +988,7 @@ export default function Administracion() {
                   { label: 'Nuevo cliente', action: () => { setTab(0); setOpenModal('cliente'); setFormC(EMPTY_CLIENTE); setEditingCliente(null); setCcList([]); setCcInput(''); setSubmitted(false); setShowDropdown(false) } },
                   { label: 'Nuevo proveedor', action: () => { setTab(1); setOpenModal('proveedor'); setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setShowDropdown(false) } },
                   { label: 'Nueva entidad', action: () => { setTab(2); setOpenModal('entidad'); setFormE(EMPTY_ENTIDAD); setEditingEntidad(null); setCuentasList([{ banco: '', moneda: 'ARS' }]); setArcaArchivo(false); setArcaVencimiento(''); setSubmitted(false); setShowDropdown(false) } },
-                  { label: 'Nuevo servicio', action: () => { setTab(3); setOpenModal('servicio'); setFormS(EMPTY_SERVICIO); setEditingServicio(null); setSubmitted(false); setShowDropdown(false) } },
+                  { label: 'Nuevo servicio', action: () => { setTab(3); setOpenModal('servicio'); setFormS(EMPTY_SERVICIO); setSubmitted(false); setShowDropdown(false) } },
                 ].map(item => (
                   <button key={item.label} role="menuitem" className="nuevo-dropdown-item" onClick={item.action}>
                     {item.label}
@@ -1102,8 +1156,9 @@ export default function Administracion() {
           <label>Período de Facturación</label>
           <div className="svc-tipo-group">
             {[
-              { val: true,  label: 'Cierre de mes' },
-              { val: false, label: 'Pack / esporádico' },
+              { val: true,    label: 'Cierre de mes' },
+              { val: 'curso', label: 'Mes en curso' },
+              { val: false,   label: 'Pack / esporádico' },
             ].map(opt => (
               <label key={String(opt.val)} className={'svc-tipo-option' + (formC.periodoCierreMes === opt.val ? ' svc-tipo-active' : '')}>
                 <input type="radio" name="periodoCierreMes" checked={formC.periodoCierreMes === opt.val}
@@ -1300,192 +1355,184 @@ export default function Administracion() {
         {/* Certificado ARCA — solo para entidades argentinas */}
         {esArgentina(formE.tipo) && (
           <div className="form-group" style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-            <label style={{ fontWeight: 600, marginBottom: 10, display: 'block' }}>
-              Certificado ARCA
-              {(() => {
-                const st = arcaStatus(arcaArchivo ? { archivoSubido: true, vencimiento: arcaVencimiento } : null)
-                if (st === 'no-cargado') return null
-                return <ArcaBadge arca={arcaArchivo ? { archivoSubido: true, vencimiento: arcaVencimiento } : null} />
-              })()}
-            </label>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: arcaArchivo ? 10 : 0 }}>
-              <input
-                id="e-arca-archivo"
-                type="checkbox"
-                checked={arcaArchivo}
-                onChange={e => setArcaArchivo(e.target.checked)}
-                style={{ width: 16, height: 16, cursor: 'pointer' }}
-              />
-              <label htmlFor="e-arca-archivo" style={{ cursor: 'pointer', margin: 0 }}>
-                Certificado subido
-              </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <label style={{ fontWeight: 600, margin: 0 }}>Certificado ARCA</label>
+              {arcaArchivo && (
+                <ArcaBadge arca={{ archivoSubido: true, vencimiento: arcaVencimiento }} />
+              )}
             </div>
 
-            {arcaArchivo && (
-              <div style={{ marginTop: 6 }}>
-                <label htmlFor="e-arca-venc" style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>
-                  Fecha de vencimiento
-                </label>
+            {/* Área drag & drop */}
+            {!arcaArchivo ? (
+              <div
+                onDragOver={e => { e.preventDefault(); setArcaDragOver(true) }}
+                onDragLeave={() => setArcaDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setArcaDragOver(false)
+                  arcaCargarArchivo(e.dataTransfer.files?.[0])
+                }}
+                onClick={() => arcaInputRef.current?.click()}
+                style={{
+                  border: `2px dashed ${arcaDragOver ? 'var(--color-cta,#111)' : '#d1d5db'}`,
+                  borderRadius: 8, padding: '20px 16px', textAlign: 'center',
+                  cursor: 'pointer', transition: 'border-color .15s',
+                  background: arcaDragOver ? 'rgba(0,0,0,.03)' : 'transparent',
+                }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 6, opacity: .4 }}>📄</div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  Arrastrá el PDF aquí o <span style={{ textDecoration: 'underline' }}>seleccioná un archivo</span>
+                </div>
+                <div style={{ fontSize: 11, opacity: .5, marginTop: 4 }}>Solo PDF · Máx. 10 MB</div>
                 <input
-                  id="e-arca-venc"
-                  type="date"
-                  className="form-input"
-                  value={arcaVencimiento}
-                  onChange={e => setArcaVencimiento(e.target.value)}
-                  style={{ maxWidth: 200 }}
+                  ref={arcaInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  style={{ display: 'none' }}
+                  onChange={e => arcaCargarArchivo(e.target.files?.[0])}
                 />
-                {arcaVencimiento && (
-                  <span style={{ marginLeft: 10, fontSize: 12 }}>
+              </div>
+            ) : (
+              /* Archivo cargado — vista de preview + acciones */
+              <div style={{ border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden' }}>
+                {/* Fila del archivo */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff' }}>
+                  <span style={{ fontSize: 20 }}>📄</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {arcaFileName || 'certificado-arca.pdf'}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: .5 }}>PDF</div>
+                  </div>
+                  {arcaBlobUrl && (
+                    <button
+                      type="button"
+                      title="Descargar PDF"
+                      onClick={() => {
+                        const a = document.createElement('a')
+                        a.href = arcaBlobUrl
+                        a.download = arcaFileName || 'certificado-arca.pdf'
+                        a.click()
+                      }}
+                      style={{ border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500, padding: '4px 10px', whiteSpace: 'nowrap' }}
+                      aria-label="Descargar"
+                    >⬇ Descargar</button>
+                  )}
+                  {arcaBlobUrl && (
+                    <button
+                      type="button"
+                      title="Compartir — copia el link del PDF para abrirlo en el navegador"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(arcaBlobUrl)
+                        setArcaShared(true)
+                        setTimeout(() => setArcaShared(false), 2000)
+                      }}
+                      style={{ border: '1px solid #d1d5db', borderRadius: 6, background: arcaShared ? '#f0fdf4' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '4px 10px', whiteSpace: 'nowrap', color: arcaShared ? '#16a34a' : 'inherit', transition: 'background .2s, color .2s' }}
+                      aria-label="Compartir"
+                    >{arcaShared ? '✓ Link copiado' : '↗ Compartir'}</button>
+                  )}
+                  <button
+                    type="button"
+                    title="Quitar archivo"
+                    onClick={arcaQuitarArchivo}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, padding: '4px 6px', opacity: .4, lineHeight: 1 }}
+                    aria-label="Quitar"
+                  >×</button>
+                </div>
+
+                {/* Link Drive */}
+                <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 14px', background: '#f8fafc' }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, opacity: .6, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 6 }}>
+                    Carpeta Drive (opcional)
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      className="form-input"
+                      placeholder="https://drive.google.com/..."
+                      value={arcaDriveUrl}
+                      onChange={e => setArcaDriveUrl(e.target.value)}
+                      style={{ flex: 1, fontSize: 13 }}
+                    />
+                    {arcaDriveUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(arcaDriveUrl)
+                          setArcaCopied(true)
+                          setTimeout(() => setArcaCopied(false), 1800)
+                        }}
+                        style={{ whiteSpace: 'nowrap', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '0 10px' }}
+                      >
+                        {arcaCopied ? '✓ Copiado' : 'Copiar link'}
+                      </button>
+                    )}
+                    {arcaDriveUrl && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(arcaDriveUrl, '_blank')}
+                        style={{ whiteSpace: 'nowrap', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, padding: '0 10px' }}
+                        title="Abrir en Drive"
+                      >↗</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Vencimiento */}
+                <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 14px', background: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label htmlFor="e-arca-venc" style={{ fontSize: 13, opacity: .6, whiteSpace: 'nowrap', margin: 0 }}>
+                    Vencimiento
+                  </label>
+                  <input
+                    id="e-arca-venc"
+                    type="date"
+                    className="form-input"
+                    value={arcaVencimiento}
+                    onChange={e => setArcaVencimiento(e.target.value)}
+                    style={{ maxWidth: 180 }}
+                  />
+                  {arcaVencimiento && (
                     <ArcaBadge arca={{ archivoSubido: true, vencimiento: arcaVencimiento }} />
-                  </span>
-                )}
+                  )}
+                </div>
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      {/* NUEVO / EDITAR SERVICIO modal */}
-      <Modal
-        isOpen={openModal === 'servicio'}
-        onClose={closeModal}
-        title={editingServicio ? 'EDITAR SERVICIO' : 'NUEVO SERVICIO'}
-        triggerRef={btnNuevoRef}
-        footer={footerFor(isReadyS, guardarS)}
-      >
-        {/* Cliente */}
-        <div className="form-group form-group-destacado">
-          <label htmlFor="s-cliente">Cliente <span className="label-req">*</span></label>
-          <select
-            id="s-cliente"
-            className={'form-select' + (submitted && !formS.clienteId ? ' input-error' : '')}
-            value={formS.clienteId}
-            onChange={chClienteServicio}
-            disabled={!!editingServicio}
-          >
-            <option value=""></option>
-            {clientes.filter(c => c.estado === 'Activo').map(c => (
-              <option key={c.id} value={String(c.id)}>{c.nombre}</option>
-            ))}
-          </select>
-          {editingServicio && <span className="field-hint">El cliente no se puede cambiar al editar</span>}
-          {submitted && !formS.clienteId && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* Nombre del servicio */}
+      {/* NUEVO SERVICIO modal — catálogo global (T13) */}
+      <Modal isOpen={openModal === 'servicio'} onClose={closeModal} title={editingServicio ? 'EDITAR SERVICIO' : 'NUEVO SERVICIO'} triggerRef={btnNuevoRef}
+        footer={footerFor(isReadyS, guardarS)}>
         <div className="form-group">
-          <label htmlFor="s-nombre">Servicio <span className="label-req">*</span></label>
-          <select
-            id="s-nombre"
-            className={'form-select' + (submitted && !formS.nombre ? ' input-error' : '')}
-            name="nombre"
-            value={formS.nombre}
-            onChange={chS}
-          >
-            <option value=""></option>
-            {CATALOGO_SERVICIOS.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          {submitted && !formS.nombre && <span className="field-error">Campo obligatorio</span>}
+          <label htmlFor="s-nombre">Nombre del servicio <span className="label-req">*</span></label>
+          <input id="s-nombre" className="form-input" name="nombre" value={formS.nombre} onChange={chS} placeholder="ej: Social Media" />
         </div>
-
-        {/* Descripción / notas del servicio */}
-        <div className="form-group">
-          <label htmlFor="s-desc">Descripción / aclaración</label>
-          <input id="s-desc" className="form-input" name="descripcion"
-            value={formS.descripcion} onChange={chS}
-            placeholder="ej: Mes 2/3, Pack 10 hs mensuales…" />
-        </div>
-
-        {/* Tipo: fijo / por hora */}
         <div className="form-group">
           <label>Tipo <span className="label-req">*</span></label>
           <div className="svc-tipo-group">
-            {[{ val: 'fijo', label: 'Precio fijo' }, { val: 'por_hora', label: 'Por hora' }].map(opt => (
-              <label key={opt.val} className={'svc-tipo-option' + (formS.tipo === opt.val ? ' svc-tipo-active' : '')}>
-                <input type="radio" name="tipo" value={opt.val} checked={formS.tipo === opt.val}
+            {['Fijo', 'Por hora'].map(t => (
+              <label key={t} className={'svc-tipo-option' + (formS.tipoSvc === t ? ' svc-tipo-active' : '')}>
+                <input type="radio" name="tipoSvc" value={t} checked={formS.tipoSvc === t}
                   onChange={chS} style={{ display: 'none' }} />
-                {opt.label}
+                {t === 'Fijo' ? 'Precio fijo' : 'Por hora'}
               </label>
             ))}
           </div>
         </div>
-
-        {/* Precio condicional */}
-        {formS.tipo === 'fijo' && (
+        {formS.tipoSvc === 'Fijo' && (
           <div className="form-group">
-            <label htmlFor="s-monto">Monto mensual</label>
-            <input id="s-monto" className="form-input" name="montoBase" type="number" min="0" step="100"
-              value={formS.montoBase} onChange={chS} placeholder="0"
-              style={{ maxWidth: 200 }} />
+            <label htmlFor="s-precio">Precio base</label>
+            <input id="s-precio" className="form-input" name="precioBase" value={formS.precioBase} onChange={chS} placeholder="0.00" />
           </div>
         )}
-        {formS.tipo === 'por_hora' && (
-          <div className="form-group">
-            <label htmlFor="s-tarifa">Tarifa por hora</label>
-            <input id="s-tarifa" className="form-input" name="tarifaHora" type="number" min="0" step="100"
-              value={formS.tarifaHora} onChange={chS} placeholder="0"
-              style={{ maxWidth: 200 }} />
-          </div>
-        )}
-
-        {/* Moneda */}
         <div className="form-group">
-          <label htmlFor="s-moneda">Moneda <span className="label-req">*</span></label>
-          <select id="s-moneda" className="form-select" name="moneda" value={formS.moneda} onChange={chS}
-            style={{ maxWidth: 120 }}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-          {formS.clienteId && <span className="field-hint">Sugerida según la entidad del cliente</span>}
-        </div>
-
-        {/* Periodicidad */}
-        <div className="form-group">
-          <label htmlFor="s-period">Periodicidad <span className="label-req">*</span></label>
-          <select id="s-period" className="form-select" name="periodicidad" value={formS.periodicidad} onChange={chS}
-            style={{ maxWidth: 160 }}>
-            {PERIODICIDADES.map(p => <option key={p} value={p} style={{ textTransform: 'capitalize' }}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+          <label htmlFor="s-moneda">Moneda</label>
+          <select id="s-moneda" className="form-select" name="moneda" value={formS.moneda} onChange={chS}>
+            <option>ARS</option><option>USD</option>
           </select>
         </div>
-
-        {/* Estado — solo en edición */}
-        {editingServicio && (
-          <div className="form-group">
-            <label htmlFor="s-estado">Estado</label>
-            <select id="s-estado" className="form-select" name="estado" value={editingServicio.estado}
-              onChange={e => setEditingServicio(prev => ({ ...prev, estado: e.target.value }))}
-              style={{ maxWidth: 160, textTransform: 'capitalize' }}>
-              {ESTADOS_SERVICIO.map(est => (
-                <option key={est} value={est} style={{ textTransform: 'capitalize' }}>
-                  {est.charAt(0).toUpperCase() + est.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Historial de precios — solo en edición, si tiene entradas */}
-        {editingServicio && editingServicio.historialPrecios && editingServicio.historialPrecios.length > 0 && (
-          <div className="form-group" style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-            <label style={{ fontWeight: 600, marginBottom: 10, display: 'block', fontSize: 13 }}>
-              Historial de precios
-            </label>
-            {editingServicio.historialPrecios.map((h, i) => (
-              <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 6, fontSize: 13 }}>
-                <span className="td-muted" style={{ minWidth: 90 }}>{h.fecha}</span>
-                <span>
-                  {h.valorAnterior !== null && h.valorAnterior !== undefined
-                    ? <><span className="td-muted" style={{ textDecoration: 'line-through' }}>{h.valorAnterior}</span>{' → '}</>
-                    : null
-                  }
-                  <strong>{h.valorNuevo}</strong>
-                </span>
-                {h.motivo && <span className="td-muted">— {h.motivo}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+        <p className="servicios-nota" style={{ marginTop: 8 }}>Los precios específicos por cliente se configuran en el perfil de cada cliente.</p>
       </Modal>
     </div>
   )

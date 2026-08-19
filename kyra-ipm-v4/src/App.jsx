@@ -10,6 +10,8 @@ import FacturacionMes from './pages/FacturacionMes'
 import AjustesPendientes from './pages/AjustesPendientes'
 import EntidadDetalle from './pages/EntidadDetalle'
 import ClienteDetalle from './pages/ClienteDetalle'
+import EmisionPage from './pages/EmisionPage'
+import { FacturacionProvider } from './context/FacturacionContext'
 
 export default function App() {
   return (
@@ -19,18 +21,21 @@ export default function App() {
         <Sidebar />
         <div className="app-body">
           <main id="main-content" className="main-content" tabIndex="-1">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard"                    element={<Dashboard />} />
-              <Route path="/administracion"               element={<Administracion />} />
-              <Route path="/administracion/entidad/:id"   element={<EntidadDetalle />} />
-              <Route path="/administracion/cliente/:id"   element={<ClienteDetalle />} />
-              <Route path="/ingresos"                     element={<Ingresos />} />
-              <Route path="/egresos"                      element={<Egresos />} />
-              <Route path="/emails"                       element={<Emails />} />
-              <Route path="/facturacion"                  element={<FacturacionMes />} />
-              <Route path="/ajustes"                      element={<AjustesPendientes />} />
-            </Routes>
+            <FacturacionProvider>
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard"                    element={<Dashboard />} />
+                <Route path="/administracion"               element={<Administracion />} />
+                <Route path="/administracion/entidad/:id"   element={<EntidadDetalle />} />
+                <Route path="/administracion/cliente/:id"   element={<ClienteDetalle />} />
+                <Route path="/ingresos"                     element={<Ingresos />} />
+                <Route path="/egresos"                      element={<Egresos />} />
+                <Route path="/emails"                       element={<Emails />} />
+                <Route path="/facturacion"                  element={<FacturacionMes />} />
+                <Route path="/emision"                      element={<EmisionPage />} />
+                <Route path="/ajustes"                      element={<AjustesPendientes />} />
+              </Routes>
+            </FacturacionProvider>
           </main>
           <Footer />
         </div>

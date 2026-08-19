@@ -1,9 +1,16 @@
 import { useState, useRef } from 'react'
+import { useFacturacion } from '../context/FacturacionContext'
 import Modal from '../components/Modal'
 import { CLIENTES_INICIAL } from '../data/clientes'
 import { ENTIDADES_INICIAL } from '../data/entidades'
 import { SERVICIOS_INICIAL } from '../data/servicios'
-import { LINEAS_INICIAL } from '../data/lineasFacturacion'
+import { HISTORIAL_INICIAL } from '../data/historialEnvios'
+import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
+import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
+import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
+import HistorialEnviosDrawer from '../components/Emails/HistorialEnviosDrawer'
+import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
+
 
 const MES_LABEL   = 'Agosto 2026'
 const MES_ACTUAL  = 'agosto'
@@ -90,6 +97,20 @@ function fmtFecha(iso) {
   return `${d}/${m}/${y}`
 }
 
+// Agrupa líneas por clienteId, preserva el orden de aparición
+function groupByCliente(lineas, clientes) {
+  const map = new Map()
+  for (const l of lineas) {
+    if (!map.has(l.clienteId)) map.set(l.clienteId, [])
+    map.get(l.clienteId).push(l)
+  }
+  return Array.from(map.entries()).map(([clienteId, ls]) => ({
+    clienteId,
+    cliente: clientes.find(c => c.id === clienteId),
+    lineas: ls,
+  }))
+}
+
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
 function IcoWarn() {
@@ -170,17 +191,10 @@ function IcoSend() {
 
 // ─── Atoms ───────────────────────────────────────────────────────────────────
 
-function TagCliente({ nombre }) {
-  return (
-    <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', opacity: .55 }}>
-      {nombre}
-    </span>
-  )
-}
-
 const ALERTA_LABELS = {
-  ipc_pendiente:    { txt: 'IPC pendiente de aplicar', color: '#e67e22' },
-  variacion_umbral: { txt: 'Variación sobre umbral',   color: '#8e44ad' },
+  ipc_pendiente:       { txt: 'IPC pendiente de aplicar', color: '#e67e22' },
+  horas_no_ingresadas: { txt: 'Horas no ingresadas',      color: '#c0392b' },
+  variacion_umbral:    { txt: 'Variación sobre umbral',   color: '#8e44ad' },
 }
 
 function BadgesAlerta({ alertas }) {
@@ -218,59 +232,182 @@ function StatCard({ label, value, sub }) {
   )
 }
 
-// ─── Card: Pendiente Revisión ─────────────────────────────────────────────────
+// ─── Separador entre servicios dentro de una card ─────────────────────────────
 
-function CardRevision({ linea, cliente, entidad, servicio, onAprobar, onEditar }) {
-  const canAprobar = linea.importeNeto != null
+function Divider() {
+  return <div style={{ borderTop: '1px solid var(--border, #e5e7eb)', margin: '16px 0' }} />
+}
+
+// ─── Cabecera de cliente (parte superior de cada card agrupada) ───────────────
+
+function ClienteHeader({ cliente, subtitulo }) {
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-.01em' }}>
+        {cliente?.nombre || '—'}
+      </div>
+      {subtitulo && (
+        <div style={{ fontSize: '12px', opacity: .45, marginTop: '2px' }}>{subtitulo}</div>
+      )}
+    </div>
+  )
+}
+
+// ─── Fila de total de cliente (cuando hay más de un servicio) ─────────────────
+
+function TotalCliente({ lineas }) {
+  const arsTotal = lineas
+    .filter(l => l.moneda === 'ARS' && l.importeBruto != null)
+    .reduce((s, l) => s + l.importeBruto, 0)
+  const usdTotal = lineas
+    .filter(l => l.moneda === 'USD' && l.importeBruto != null)
+    .reduce((s, l) => s + l.importeBruto, 0)
+
+  const tieneARS = arsTotal > 0
+  const tieneUSD = usdTotal > 0
+  const multiMoneda = tieneARS && tieneUSD
+
+  if (!tieneARS && !tieneUSD) return null
+  if (lineas.length < 2) return null
+
+  return (
+    <div style={{
+      borderTop: '2px solid var(--border, #e5e7eb)', marginTop: '16px', paddingTop: '12px',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    }}>
+      <span style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', opacity: .5 }}>
+        Total cliente
+      </span>
+      <div style={{ textAlign: 'right' }}>
+        {tieneARS && (
+          <div style={{ fontSize: '18px', fontWeight: 700 }}>{fmt$ARS(arsTotal)}</div>
+        )}
+        {tieneUSD && (
+          <div style={{ fontSize: multiMoneda ? '14px' : '18px', fontWeight: 700 }}>{fmt$USD(usdTotal)}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Service line: Pendiente revisión ────────────────────────────────────────
+
+function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar }) {
+  const esHoras = linea.alertas?.includes('horas_no_ingresadas')
+  const [horas,  setHoras]  = useState(linea.cantidadHoras ?? '')
+  const [tarifa, setTarifa] = useState(linea.tarifaHora ?? '')
+  const [errH,   setErrH]   = useState('')
+  const [errT,   setErrT]   = useState('')
+
+  const montoCalc = esHoras && Number(horas) > 0 && Number(tarifa) > 0
+    ? Number(horas) * Number(tarifa)
+    : null
+
+  const canAprobar = esHoras
+    ? Number(horas) > 0 && Number(tarifa) > 0
+    : linea.importeNeto != null
 
   function handleAprobar() {
-    onAprobar(linea.id, {})
+    if (esHoras) {
+      let ok = true
+      if (!horas || Number(horas) <= 0) { setErrH('Ingresá la cantidad de horas'); ok = false }
+      if (!tarifa || Number(tarifa) <= 0) { setErrT('Ingresá la tarifa por hora'); ok = false }
+      if (!ok) return
+      const neto = Number(horas) * Number(tarifa)
+      const imp  = calcImpuesto(neto, linea.tipoFactura)
+      onAprobar(linea.id, {
+        cantidadHoras: Number(horas),
+        tarifaHora:    Number(tarifa),
+        importeNeto:   neto,
+        impuesto:      imp,
+        importeBruto:  neto + imp,
+        alertas:       linea.alertas?.filter(a => a !== 'horas_no_ingresadas') ?? [],
+      })
+    } else {
+      onAprobar(linea.id, {})
+    }
   }
 
   const impLabel = labelImp(linea.tipoFactura)
 
   return (
-    <div style={{
-      background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e5e7eb)',
-      borderRadius: '12px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Service name + amount */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <TagCliente nombre={cliente?.nombre || '—'} />
-          <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '2px' }}>{servicio?.nombre || '—'}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600 }}>{servicio?.nombre || '—'}</div>
           <BadgesAlerta alertas={linea.alertas} />
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '22px', fontWeight: 700 }}>
-            {fmtMonto(linea.importeBruto, linea.moneda)}
-          </div>
-          {impLabel && (
-            <div style={{ fontSize: '11px', opacity: .5 }}>
-              Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel}
+          {!esHoras && (
+            <>
+              <div style={{ fontSize: '20px', fontWeight: 700 }}>
+                {fmtMonto(linea.importeBruto, linea.moneda)}
+              </div>
+              {impLabel && (
+                <div style={{ fontSize: '11px', opacity: .5 }}>
+                  Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel}
+                </div>
+              )}
+              {linea.ajusteIPCPendiente && linea.montoConIPC && (
+                <div style={{ fontSize: '11px', color: '#e67e22', marginTop: '2px' }}>
+                  Con IPC: {fmtMonto(linea.montoConIPC, linea.moneda)}
+                </div>
+              )}
+            </>
+          )}
+          {esHoras && montoCalc != null && (
+            <div style={{ fontSize: '20px', fontWeight: 700 }}>
+              {fmtMonto(montoCalc + calcImpuesto(montoCalc, linea.tipoFactura), linea.moneda)}
             </div>
           )}
-          {linea.ajusteIPCPendiente && linea.montoConIPC && (
-            <div style={{ fontSize: '11px', color: '#e67e22', marginTop: '2px' }}>
-              Con IPC: {fmtMonto(linea.montoConIPC, linea.moneda)}
-            </div>
+          {esHoras && montoCalc == null && (
+            <div style={{ fontSize: '14px', opacity: .4, fontStyle: 'italic' }}>importe pendiente</div>
           )}
         </div>
       </div>
 
-      {linea.cantidadHoras != null && (
+      {/* Inline hours form */}
+      {esHoras && (
         <div style={{
           background: 'var(--bg-page, #f5f6fa)', borderRadius: '8px',
-          padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px',
+          padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px',
         }}>
           <div style={{ fontSize: '12px', fontWeight: 600, opacity: .6, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-            Detalle de horas
+            Ingresá las horas trabajadas
           </div>
-          <div style={{ fontSize: '13px' }}>
-            {linea.cantidadHoras} hs × {fmtMonto(linea.tarifaHora, linea.moneda)} / h
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div className="form-group" style={{ flex: 1, margin: 0 }}>
+              <label>Cantidad de horas</label>
+              <input
+                type="number" min="0" step="0.5" className="form-input"
+                placeholder="ej. 4"
+                value={horas}
+                onChange={e => { setHoras(e.target.value); setErrH('') }}
+              />
+              {errH && <div className="form-field-error">{errH}</div>}
+            </div>
+            <div className="form-group" style={{ flex: 1, margin: 0 }}>
+              <label>Tarifa por hora ({linea.moneda})</label>
+              <input
+                type="number" min="0" className="form-input"
+                placeholder="ej. 22840"
+                value={tarifa}
+                onChange={e => { setTarifa(e.target.value); setErrT('') }}
+              />
+              {errT && <div className="form-field-error">{errT}</div>}
+            </div>
           </div>
+          {montoCalc != null && (
+            <div style={{ fontSize: '12px', opacity: .6 }}>
+              Subtotal: {fmtMonto(montoCalc, linea.moneda)}
+              {impLabel && ` + ${impLabel} = ${fmtMonto(montoCalc + calcImpuesto(montoCalc, linea.tipoFactura), linea.moneda)}`}
+            </div>
+          )}
         </div>
       )}
 
+      {/* Meta + actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ fontSize: '12px', opacity: .5 }}>
           {entidad?.nombre} · Factura {linea.tipoFactura} · {linea.moneda}
@@ -298,19 +435,50 @@ function CardRevision({ linea, cliente, entidad, servicio, onAprobar, onEditar }
   )
 }
 
-// ─── Card: Aprobada ───────────────────────────────────────────────────────────
+// ─── Grupo cliente: Pendiente revisión ───────────────────────────────────────
 
-function CardAprobada({ linea, cliente, entidad, servicio, onEmitir, onRechazar }) {
-  const impLabel = labelImp(linea.tipoFactura)
+function ClienteGrupoRevision({ grupo, entidades, servicios, onAprobar, onEditar }) {
+  const { cliente, lineas } = grupo
+  const total = lineas.length
   return (
     <div style={{
       background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e5e7eb)',
-      borderRadius: '12px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px',
+      borderRadius: '12px', padding: '20px 24px',
     }}>
+      <ClienteHeader
+        cliente={cliente}
+        subtitulo={`${total} servicio${total !== 1 ? 's' : ''} pendiente${total !== 1 ? 's' : ''} de revisión`}
+      />
+      {lineas.map((linea, i) => {
+        const entidad  = entidades.find(e => e.id === linea.entidadId)
+        const servicio = servicios.find(s => s.id === linea.servicioId)
+        return (
+          <div key={linea.id}>
+            {i > 0 && <Divider />}
+            <ServiceLineRevision
+              linea={linea}
+              entidad={entidad}
+              servicio={servicio}
+              onAprobar={onAprobar}
+              onEditar={onEditar}
+            />
+          </div>
+        )
+      })}
+      <TotalCliente lineas={lineas} />
+    </div>
+  )
+}
+
+// ─── Service line: Aprobada ───────────────────────────────────────────────────
+
+function ServiceLineAprobada({ linea, entidad, servicio, onEmitir, onRechazar }) {
+  const impLabel = labelImp(linea.tipoFactura)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <TagCliente nombre={cliente?.nombre || '—'} />
-          <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '2px' }}>{servicio?.nombre || '—'}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600 }}>{servicio?.nombre || '—'}</div>
           {linea.cantidadHoras && (
             <div style={{ fontSize: '12px', opacity: .55, marginTop: '2px' }}>
               {linea.cantidadHoras} h × {fmtMonto(linea.tarifaHora, linea.moneda)}
@@ -318,7 +486,7 @@ function CardAprobada({ linea, cliente, entidad, servicio, onEmitir, onRechazar 
           )}
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '22px', fontWeight: 700 }}>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>
             {fmtMonto(linea.importeBruto, linea.moneda)}
           </div>
           {impLabel && (
@@ -358,25 +526,57 @@ function CardAprobada({ linea, cliente, entidad, servicio, onEmitir, onRechazar 
   )
 }
 
-// ─── Card: Emitida ────────────────────────────────────────────────────────────
+// ─── Grupo cliente: Aprobada ──────────────────────────────────────────────────
 
-function CardEmitida({ linea, cliente, entidad, servicio, onVerDetalle, onEnviar }) {
-  const impLabel = labelImp(linea.tipoFactura)
+function ClienteGrupoAprobada({ grupo, entidades, servicios, onEmitir, onRechazar }) {
+  const { cliente, lineas } = grupo
+  const total = lineas.length
   return (
     <div style={{
       background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e5e7eb)',
-      borderRadius: '12px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px',
+      borderRadius: '12px', padding: '20px 24px',
     }}>
+      <ClienteHeader
+        cliente={cliente}
+        subtitulo={`${total} servicio${total !== 1 ? 's' : ''} aprobado${total !== 1 ? 's' : ''}`}
+      />
+      {lineas.map((linea, i) => {
+        const entidad  = entidades.find(e => e.id === linea.entidadId)
+        const servicio = servicios.find(s => s.id === linea.servicioId)
+        return (
+          <div key={linea.id}>
+            {i > 0 && <Divider />}
+            <ServiceLineAprobada
+              linea={linea}
+              entidad={entidad}
+              servicio={servicio}
+              onEmitir={onEmitir}
+              onRechazar={onRechazar}
+            />
+          </div>
+        )
+      })}
+      <TotalCliente lineas={lineas} />
+    </div>
+  )
+}
+
+// ─── Service line: Emitida ────────────────────────────────────────────────────
+
+function ServiceLineEmitida({ linea, entidad, servicio, onVerDetalle, onEnviar, onVerEmail }) {
+  const impLabel = labelImp(linea.tipoFactura)
+  const emailEstado = linea.emailEstado || 'pendiente'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <TagCliente nombre={cliente?.nombre || '—'} />
-          <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '2px' }}>{servicio?.nombre || '—'}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600 }}>{servicio?.nombre || '—'}</div>
           <div style={{ fontSize: '12px', opacity: .55, marginTop: '3px' }}>
             {linea.nroFactura} · Vence {fmtFecha(linea.fechaVencimiento)}
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '22px', fontWeight: 700 }}>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>
             {fmtMonto(linea.importeBruto, linea.moneda)}
           </div>
           {impLabel && (
@@ -387,10 +587,16 @@ function CardEmitida({ linea, cliente, entidad, servicio, onVerDetalle, onEnviar
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '12px', opacity: .5 }}>
-          {entidad?.nombre} · Emitida {fmtFecha(linea.fechaEmision)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '12px', opacity: .5 }}>
+            {entidad?.nombre} · Emitida {fmtFecha(linea.fechaEmision)}
+          </span>
+          <BadgeEstadoEnvio estado={emailEstado} size="sm" />
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-secondary btn-sm" onClick={() => onVerEmail(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            ✉ Email
+          </button>
           <button className="btn-secondary btn-sm" onClick={() => onVerDetalle(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
             <IcoEye /> Ver detalle
           </button>
@@ -403,26 +609,58 @@ function CardEmitida({ linea, cliente, entidad, servicio, onVerDetalle, onEnviar
   )
 }
 
-// ─── Card: Enviada ────────────────────────────────────────────────────────────
+// ─── Grupo cliente: Emitida ───────────────────────────────────────────────────
 
-function CardEnviada({ linea, cliente, entidad, servicio, onVerDetalle }) {
-  const impLabel = labelImp(linea.tipoFactura)
+function ClienteGrupoEmitida({ grupo, entidades, servicios, onVerDetalle, onEnviar, onVerEmail }) {
+  const { cliente, lineas } = grupo
+  const total = lineas.length
   return (
     <div style={{
       background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e5e7eb)',
-      borderRadius: '12px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px',
-      opacity: .85,
+      borderRadius: '12px', padding: '20px 24px',
     }}>
+      <ClienteHeader
+        cliente={cliente}
+        subtitulo={`${total} factura${total !== 1 ? 's' : ''} emitida${total !== 1 ? 's' : ''}`}
+      />
+      {lineas.map((linea, i) => {
+        const entidad  = entidades.find(e => e.id === linea.entidadId)
+        const servicio = servicios.find(s => s.id === linea.servicioId)
+        return (
+          <div key={linea.id}>
+            {i > 0 && <Divider />}
+            <ServiceLineEmitida
+              linea={linea}
+              entidad={entidad}
+              servicio={servicio}
+              onVerDetalle={onVerDetalle}
+              onEnviar={onEnviar}
+              onVerEmail={onVerEmail}
+            />
+          </div>
+        )
+      })}
+      <TotalCliente lineas={lineas} />
+    </div>
+  )
+}
+
+// ─── Service line: Enviada ────────────────────────────────────────────────────
+
+function ServiceLineEnviada({ linea, entidad, servicio, onVerDetalle, onVerEmail }) {
+  const impLabel = labelImp(linea.tipoFactura)
+  const emailEstado = linea.emailEstado || 'enviado'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <TagCliente nombre={cliente?.nombre || '—'} />
-          <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '2px' }}>{servicio?.nombre || '—'}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600 }}>{servicio?.nombre || '—'}</div>
           <div style={{ fontSize: '12px', opacity: .55, marginTop: '3px' }}>
             {linea.nroFactura} · Enviada {fmtFecha(linea.fechaEnvio || linea.fechaEmision)}
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '22px', fontWeight: 700 }}>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>
             {fmtMonto(linea.importeBruto, linea.moneda)}
           </div>
           {impLabel && (
@@ -433,25 +671,61 @@ function CardEnviada({ linea, cliente, entidad, servicio, onVerDetalle }) {
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-        <div style={{ fontSize: '12px', opacity: .5 }}>
-          {entidad?.nombre} · Vence {fmtFecha(linea.fechaVencimiento)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '12px', opacity: .5 }}>
+            {entidad?.nombre} · Vence {fmtFecha(linea.fechaVencimiento)}
+          </span>
+          <BadgeEstadoEnvio estado={emailEstado} size="sm" />
         </div>
-        <button className="btn-secondary btn-sm" onClick={() => onVerDetalle(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-          <IcoEye /> Ver detalle
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-secondary btn-sm" onClick={() => onVerEmail(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            ✉ Email
+          </button>
+          <button className="btn-secondary btn-sm" onClick={() => onVerDetalle(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <IcoEye /> Ver detalle
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Drawer Factura ───────────────────────────────────────────────────────────
+// ─── Grupo cliente: Enviada ───────────────────────────────────────────────────
 
-const STATUS_DRAWER = {
-  revision: { label: 'Pendiente revisión', bg: '#f5f5f5',  color: '#525252' },
-  aprobada: { label: 'Aprobada',           bg: '#f5f5f5',  color: '#525252' },
-  emitida:  { label: 'Emitida',            bg: '#171717',  color: '#fff'    },
-  enviada:  { label: 'Enviada',            bg: '#404040',  color: '#fff'    },
+function ClienteGrupoEnviada({ grupo, entidades, servicios, onVerDetalle, onVerEmail }) {
+  const { cliente, lineas } = grupo
+  const total = lineas.length
+  return (
+    <div style={{
+      background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e5e7eb)',
+      borderRadius: '12px', padding: '20px 24px', opacity: .85,
+    }}>
+      <ClienteHeader
+        cliente={cliente}
+        subtitulo={`${total} factura${total !== 1 ? 's' : ''} enviada${total !== 1 ? 's' : ''}`}
+      />
+      {lineas.map((linea, i) => {
+        const entidad  = entidades.find(e => e.id === linea.entidadId)
+        const servicio = servicios.find(s => s.id === linea.servicioId)
+        return (
+          <div key={linea.id}>
+            {i > 0 && <Divider />}
+            <ServiceLineEnviada
+              linea={linea}
+              entidad={entidad}
+              servicio={servicio}
+              onVerDetalle={onVerDetalle}
+              onVerEmail={onVerEmail}
+            />
+          </div>
+        )
+      })}
+      <TotalCliente lineas={lineas} />
+    </div>
+  )
 }
+
+// ─── Drawer Factura ───────────────────────────────────────────────────────────
 
 function DrawerFactura({ linea, onClose, clientes, entidades, servicios }) {
   if (!linea) return null
@@ -459,89 +733,77 @@ function DrawerFactura({ linea, onClose, clientes, entidades, servicios }) {
   const entidad  = entidades.find(e => e.id === linea.entidadId)
   const servicio = servicios.find(s => s.id === linea.servicioId)
   const impLabel = labelImp(linea.tipoFactura)
-  const st       = STATUS_DRAWER[linea.status] || STATUS_DRAWER.revision
-
-  const Row = ({ label, value }) => value ? (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border, #e5e7eb)' }}>
-      <span style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: '13px', fontWeight: 500, textAlign: 'right' }}>{value}</span>
-    </div>
-  ) : null
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 199, backdropFilter: 'blur(1px)' }} />
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)',
+          zIndex: 199, backdropFilter: 'blur(1px)',
+        }}
+      />
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: '400px', maxWidth: '95vw',
-        background: '#fff', zIndex: 200, overflowY: 'auto',
-        boxShadow: '-4px 0 32px rgba(0,0,0,.14)',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px', maxWidth: '95vw',
+        background: 'var(--bg-card, #fff)', zIndex: 200, overflowY: 'auto',
+        boxShadow: '-4px 0 24px rgba(0,0,0,.12)',
         display: 'flex', flexDirection: 'column',
       }}>
-
-        {/* ── Sticky header ── */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '18px 20px', borderBottom: '1px solid var(--border, #e5e7eb)',
-          position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+          padding: '20px 24px 16px', borderBottom: '1px solid var(--border, #e5e7eb)',
+          position: 'sticky', top: 0, background: 'var(--bg-card, #fff)', zIndex: 1,
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)' }}>Factura</span>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>{cliente?.nombre || '—'}</span>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', opacity: .45 }}>
+              Detalle de factura
+            </div>
+            <div style={{ fontSize: '17px', fontWeight: 700, marginTop: '2px' }}>{linea.nroFactura}</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: st.bg, color: st.color }}>{st.label}</span>
-            <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '22px', lineHeight: 1, color: 'var(--gray-400, #a3a3a3)', padding: '2px 6px' }} aria-label="Cerrar">×</button>
-          </div>
+          <button
+            onClick={onClose}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', lineHeight: 1, opacity: .5, padding: '4px 8px' }}
+            aria-label="Cerrar"
+          >×</button>
         </div>
 
-        {/* ── Importe hero ── */}
-        <div style={{ padding: '28px 20px 24px', borderBottom: '1px solid var(--border, #e5e7eb)', background: 'var(--gray-50, #fafafa)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', marginBottom: '8px' }}>Importe total</div>
-          <div style={{ fontSize: '38px', fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1 }}>
-            {fmtMonto(linea.importeBruto, linea.moneda)}
-          </div>
-          {impLabel && (
-            <div style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', marginTop: '8px', display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <span>{fmtMonto(linea.importeNeto, linea.moneda)} neto</span>
-              <span style={{ opacity: .4 }}>+</span>
-              <span>{impLabel} {fmtMonto(linea.impuesto, linea.moneda)}</span>
+        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+          <div style={{ textAlign: 'center', padding: '24px 0', borderBottom: '1px solid var(--border, #e5e7eb)' }}>
+            <div style={{ fontSize: '13px', opacity: .5, marginBottom: '6px' }}>Importe total</div>
+            <div style={{ fontSize: '36px', fontWeight: 800, letterSpacing: '-.02em' }}>
+              {fmtMonto(linea.importeBruto, linea.moneda)}
             </div>
-          )}
-          {linea.cantidadHoras && (
-            <div style={{ fontSize: '12px', color: 'var(--gray-500, #737373)', marginTop: '4px' }}>
-              {linea.cantidadHoras} h × {fmtMonto(linea.tarifaHora, linea.moneda)}
+            {impLabel && (
+              <div style={{ fontSize: '13px', opacity: .5, marginTop: '6px' }}>
+                Neto {fmtMonto(linea.importeNeto, linea.moneda)} + {impLabel} ({pctImpLabel(linea.tipoFactura)}) = {fmtMonto(linea.impuesto, linea.moneda)}
+              </div>
+            )}
+          </div>
+
+          {[
+            ['Cliente',      cliente?.nombre],
+            ['Servicio',     servicio?.nombre],
+            ['Entidad',      entidad?.nombre],
+            ['Tipo factura', `Factura ${linea.tipoFactura}`],
+            ['Nro. factura', linea.nroFactura],
+            ['Período',      `${linea.mes?.charAt(0).toUpperCase() + linea.mes?.slice(1)} ${linea.anio}`],
+            ['Emisión',      fmtFecha(linea.fechaEmision)],
+            ['Vencimiento',  fmtFecha(linea.fechaVencimiento)],
+            linea.cantidadHoras ? ['Horas', `${linea.cantidadHoras} h × ${fmtMonto(linea.tarifaHora, linea.moneda)}`] : null,
+            linea.fechaEnvio ? ['Enviada', fmtFecha(linea.fechaEnvio)] : null,
+          ].filter(Boolean).map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', gap: '8px' }}>
+              <span style={{ opacity: .5 }}>{label}</span>
+              <span style={{ fontWeight: 500, textAlign: 'right' }}>{value || '—'}</span>
             </div>
-          )}
-        </div>
+          ))}
 
-        {/* ── Cuerpo ── */}
-        <div style={{ padding: '0 20px 32px', flex: 1 }}>
-
-          {/* Servicio y entidad */}
-          <div style={{ paddingTop: '4px' }}>
-            <Row label="Servicio"      value={servicio?.nombre} />
-            <Row label="Entidad"       value={entidad?.nombre} />
-            <Row label="Tipo factura"  value={linea.tipoFactura ? `Factura ${linea.tipoFactura}` : null} />
-            <Row label="Nro. factura"  value={linea.nroFactura} />
-          </div>
-
-          {/* Fechas */}
-          <div style={{ marginTop: '16px', paddingTop: '4px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', padding: '8px 0 4px' }}>Fechas</div>
-            <Row label="Período"      value={linea.mes ? `${linea.mes.charAt(0).toUpperCase() + linea.mes.slice(1)} ${linea.anio}` : null} />
-            <Row label="Emisión"      value={fmtFecha(linea.fechaEmision)} />
-            <Row label="Vencimiento"  value={fmtFecha(linea.fechaVencimiento)} />
-            {linea.fechaEnvio && <Row label="Enviada" value={fmtFecha(linea.fechaEnvio)} />}
-          </div>
-
-          {/* Dirección fiscal */}
           {cliente && MOCK_DIRS[cliente.id] && (
-            <div style={{ marginTop: '20px', padding: '14px 16px', background: 'var(--gray-50, #fafafa)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--gray-400, #a3a3a3)', marginBottom: '6px' }}>Dirección fiscal</div>
-              <div style={{ fontSize: '13px' }}>{MOCK_DIRS[cliente.id]}</div>
+            <div style={{ borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: '16px' }}>
+              <div style={{ fontSize: '12px', opacity: .45, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Dirección fiscal</div>
+              <div style={{ fontSize: '14px' }}>{MOCK_DIRS[cliente.id]}</div>
             </div>
           )}
-
         </div>
       </div>
     </>
@@ -561,7 +823,7 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
   const [nota,       setNota]       = useState('')
   const [errors,     setErrors]     = useState({})
 
-  const esHoras = servicio?.tipo === 'por_hora' || linea.cantidadHoras != null
+  const esHoras = servicio?.tipo === 'por_hora' || linea.cantidadHoras != null || linea.alertas?.includes('horas_no_ingresadas')
 
   function validate() {
     const e = {}
@@ -583,7 +845,7 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
       const imp  = calcImpuesto(neto, linea.tipoFactura)
       cambios = { ...cambios, cantidadHoras: Number(cantHoras), tarifaHora: Number(tarifaHora),
                   importeNeto: neto, impuesto: imp, importeBruto: neto + imp,
-                  alertas: linea.alertas ?? [] }
+                  alertas: linea.alertas?.filter(a => a !== 'horas_no_ingresadas') ?? [] }
     } else {
       const base  = Number(montoBase)
       const imp   = calcImpuesto(base, linea.tipoFactura)
@@ -955,16 +1217,61 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FacturacionMes() {
-  const [lineas,      setLineas]      = useState(LINEAS_INICIAL)
-  const [tabActivo,   setTabActivo]   = useState('revision')
-  const [drawerLinea, setDrawerLinea] = useState(null)
-  const [lineaEditar, setLineaEditar] = useState(null)
+  const { lineas, setLineas, historialEmail, addHistorialEmail } = useFacturacion()
+  const [tabActivo,       setTabActivo]       = useState('revision')
+  const [drawerLinea,     setDrawerLinea]     = useState(null)
+  const [emailDrawerLinea, setEmailDrawerLinea] = useState(null)
+  const [lineaEditar,     setLineaEditar]     = useState(null)
+  const [showNueva,       setShowNueva]       = useState(false)
 
   const btnNuevaRef = useRef(null)
 
   const clientes  = CLIENTES_INICIAL
   const entidades = ENTIDADES_INICIAL
   const servicios = SERVICIOS_INICIAL
+
+  // ── Email helpers ────────────────────────────────────────────────────────────
+
+  function setLineaEmailStatus(id, updates) {
+    setLineas(ls => ls.map(l => l.id === id ? { ...l, ...updates } : l))
+  }
+
+  async function intentarEnvioEmail(lineaEmitida) {
+    if (!lineaEmitida) return
+    const tipoSF = lineaEmitida.tipoFactura === 'S' || lineaEmitida.tipoFactura === 'F'
+    if (tipoSF) {
+      setLineaEmailStatus(lineaEmitida.id, { emailEstado: 'na' })
+      return
+    }
+    const cliente = clientes.find(c => c.id === lineaEmitida.clienteId)
+    if (!cliente?.emailConfig?.emailPrincipal && !cliente?.email) {
+      setLineaEmailStatus(lineaEmitida.id, { emailEstado: 'sin_email' })
+      return
+    }
+    const globalOn  = CONFIG_EMAIL_INICIAL.envioAutomaticoGlobal
+    const clienteOn = cliente?.emailConfig?.envioAutomatico !== false
+    if (!globalOn || !clienteOn) {
+      setLineaEmailStatus(lineaEmitida.id, { emailEstado: 'pendiente' })
+      return
+    }
+    const plantillaId = cliente?.emailConfig?.plantillaId || CONFIG_EMAIL_INICIAL.plantillaDefaultId
+    const plantilla   = PLANTILLAS_INICIAL.find(p => p.id === plantillaId) || PLANTILLAS_INICIAL[0]
+    const servicio    = servicios.find(s => s.id === lineaEmitida.servicioId)
+
+    setLineaEmailStatus(lineaEmitida.id, { emailEstado: 'enviando' })
+
+    const resultado = await enviarEmailFactura({
+      lineaFacturacion: lineaEmitida, cliente, servicio, plantilla, config: CONFIG_EMAIL_INICIAL,
+    })
+    const registro = construirRegistroHistorial(resultado, lineaEmitida, Date.now())
+    addHistorialEmail(registro)
+
+    setLineaEmailStatus(lineaEmitida.id, {
+      emailEstado:     resultado.success ? 'enviado' : 'error',
+      emailError:      resultado.success ? null : resultado.errorMensaje,
+      emailFechaEnvio: resultado.success ? resultado.fechaEnvio : null,
+    })
+  }
 
   // ── State machine ───────────────────────────────────────────────────────────
 
@@ -976,16 +1283,19 @@ export default function FacturacionMes() {
   }
 
   function emitirLinea(id) {
+    let lineaEmitida
     setLineas(ls => {
       const linea  = ls.find(l => l.id === id)
       const nroFac = contadorNroFac(ls, linea?.entidadId)
-      return ls.map(l => l.id === id
-        ? { ...l, status: 'emitida', nroFactura: nroFac,
-            fechaEmision: fechaHoy(),
-            fechaVencimiento: fechaUltimoDia(l.mes, l.anio) }
-        : l
-      )
+      lineaEmitida = {
+        ...linea, status: 'emitida', nroFactura: nroFac,
+        fechaEmision: fechaHoy(),
+        fechaVencimiento: fechaUltimoDia(linea.mes, linea.anio),
+      }
+      return ls.map(l => l.id === id ? lineaEmitida : l)
     })
+    // Disparar envío de email en el próximo tick (lineaEmitida ya está construida)
+    setTimeout(() => intentarEnvioEmail(lineaEmitida), 0)
   }
 
   function enviarLinea(id) {
@@ -1019,6 +1329,13 @@ export default function FacturacionMes() {
   const emitidas   = lineas.filter(l => l.status === 'emitida')
   const enviadas   = lineas.filter(l => l.status === 'enviada')
 
+  // ── Grupos por cliente ──────────────────────────────────────────────────────
+
+  const gruposRevision = groupByCliente(enRevision, clientes)
+  const gruposAprobada = groupByCliente(aprobadas,  clientes)
+  const gruposEmitida  = groupByCliente(emitidas,   clientes)
+  const gruposEnviada  = groupByCliente(enviadas,   clientes)
+
   // ── Totals (emitidas + enviadas = revenue confirmado) ───────────────────────
 
   const totalARS = lineas
@@ -1039,14 +1356,6 @@ export default function FacturacionMes() {
   const tabLabels = { revision: 'pendientes revisión', aprobada: 'aprobadas', emitida: 'emitidas', enviada: 'enviadas' }
   const tabCounts = { revision: enRevision.length, aprobada: aprobadas.length, emitida: emitidas.length, enviada: enviadas.length }
 
-  function lookup(linea) {
-    return {
-      cliente:  clientes.find(c => c.id === linea.clienteId),
-      entidad:  entidades.find(e => e.id === linea.entidadId),
-      servicio: servicios.find(s => s.id === linea.servicioId),
-    }
-  }
-
   return (
     <div className="page-content">
       {/* Header */}
@@ -1055,6 +1364,14 @@ export default function FacturacionMes() {
           <h1 className="page-title" style={{ marginBottom: '2px' }}>Facturación del mes</h1>
           <div style={{ fontSize: '13px', opacity: .5 }}>{MES_LABEL}</div>
         </div>
+        <button
+          ref={btnNuevaRef}
+          className="btn-cta"
+          onClick={() => setShowNueva(true)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+        >
+          <IcoPlus /> Nueva línea
+        </button>
       </div>
 
       {/* Stat cards */}
@@ -1097,89 +1414,80 @@ export default function FacturacionMes() {
         ))}
       </div>
 
-      {/* Cards */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Cards agrupadas por cliente */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+        {/* Tab: Revisión */}
         {tabActivo === 'revision' && enRevision.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 24px', opacity: .4, fontSize: '14px' }}>
             No hay líneas pendientes de revisión.
           </div>
         )}
-        {tabActivo === 'revision' && enRevision.map(linea => {
-          const { cliente, entidad, servicio } = lookup(linea)
-          return (
-            <CardRevision
-              key={linea.id}
-              linea={linea}
-              cliente={cliente}
-              entidad={entidad}
-              servicio={servicio}
-              onAprobar={aprobarLinea}
-              onEditar={setLineaEditar}
-            />
-          )
-        })}
+        {tabActivo === 'revision' && gruposRevision.map(grupo => (
+          <ClienteGrupoRevision
+            key={grupo.clienteId}
+            grupo={grupo}
+            entidades={entidades}
+            servicios={servicios}
+            onAprobar={aprobarLinea}
+            onEditar={setLineaEditar}
+          />
+        ))}
 
+        {/* Tab: Aprobadas */}
         {tabActivo === 'aprobada' && aprobadas.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 24px', opacity: .4, fontSize: '14px' }}>
             No hay líneas aprobadas.
           </div>
         )}
-        {tabActivo === 'aprobada' && aprobadas.map(linea => {
-          const { cliente, entidad, servicio } = lookup(linea)
-          return (
-            <CardAprobada
-              key={linea.id}
-              linea={linea}
-              cliente={cliente}
-              entidad={entidad}
-              servicio={servicio}
-              onEmitir={emitirLinea}
-              onRechazar={rechazarLinea}
-            />
-          )
-        })}
+        {tabActivo === 'aprobada' && gruposAprobada.map(grupo => (
+          <ClienteGrupoAprobada
+            key={grupo.clienteId}
+            grupo={grupo}
+            entidades={entidades}
+            servicios={servicios}
+            onEmitir={emitirLinea}
+            onRechazar={rechazarLinea}
+          />
+        ))}
 
+        {/* Tab: Emitidas */}
         {tabActivo === 'emitida' && emitidas.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 24px', opacity: .4, fontSize: '14px' }}>
             No hay líneas emitidas.
           </div>
         )}
-        {tabActivo === 'emitida' && emitidas.map(linea => {
-          const { cliente, entidad, servicio } = lookup(linea)
-          return (
-            <CardEmitida
-              key={linea.id}
-              linea={linea}
-              cliente={cliente}
-              entidad={entidad}
-              servicio={servicio}
-              onVerDetalle={setDrawerLinea}
-              onEnviar={enviarLinea}
-            />
-          )
-        })}
+        {tabActivo === 'emitida' && gruposEmitida.map(grupo => (
+          <ClienteGrupoEmitida
+            key={grupo.clienteId}
+            grupo={grupo}
+            entidades={entidades}
+            servicios={servicios}
+            onVerDetalle={setDrawerLinea}
+            onEnviar={enviarLinea}
+            onVerEmail={setEmailDrawerLinea}
+          />
+        ))}
 
+        {/* Tab: Enviadas */}
         {tabActivo === 'enviada' && enviadas.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 24px', opacity: .4, fontSize: '14px' }}>
             No hay líneas enviadas.
           </div>
         )}
-        {tabActivo === 'enviada' && enviadas.map(linea => {
-          const { cliente, entidad, servicio } = lookup(linea)
-          return (
-            <CardEnviada
-              key={linea.id}
-              linea={linea}
-              cliente={cliente}
-              entidad={entidad}
-              servicio={servicio}
-              onVerDetalle={setDrawerLinea}
-            />
-          )
-        })}
+        {tabActivo === 'enviada' && gruposEnviada.map(grupo => (
+          <ClienteGrupoEnviada
+            key={grupo.clienteId}
+            grupo={grupo}
+            entidades={entidades}
+            servicios={servicios}
+            onVerDetalle={setDrawerLinea}
+            onVerEmail={setEmailDrawerLinea}
+          />
+        ))}
       </div>
 
-      {/* Drawer */}
+      {/* Drawer Factura */}
       {drawerLinea && (
         <DrawerFactura
           linea={drawerLinea}
@@ -1187,6 +1495,19 @@ export default function FacturacionMes() {
           clientes={clientes}
           entidades={entidades}
           servicios={servicios}
+        />
+      )}
+
+      {/* Drawer Historial Emails */}
+      {emailDrawerLinea && (
+        <HistorialEnviosDrawer
+          linea={emailDrawerLinea}
+          historial={[...HISTORIAL_INICIAL, ...historialEmail]}
+          onClose={() => setEmailDrawerLinea(null)}
+          onReenviar={(lineaId) => {
+            const lineaActual = lineas.find(l => l.id === lineaId)
+            if (lineaActual) intentarEnvioEmail(lineaActual)
+          }}
         />
       )}
 
@@ -1203,6 +1524,16 @@ export default function FacturacionMes() {
         />
       )}
 
+      {/* Modal Nueva */}
+      <ModalNuevaFactura
+        isOpen={showNueva}
+        onClose={() => setShowNueva(false)}
+        onAgregar={agregarLinea}
+        clientes={clientes}
+        entidades={entidades}
+        servicios={servicios}
+        triggerRef={btnNuevaRef}
+      />
     </div>
   )
 }

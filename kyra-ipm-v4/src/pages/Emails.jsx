@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import Modal from '../components/Modal'
+import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
+import EditorPlantilla from '../components/Emails/EditorPlantilla'
+import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
+import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
+import { HISTORIAL_INICIAL } from '../data/historialEnvios'
+import { CLIENTES_INICIAL } from '../data/clientes'
+import { useFacturacion } from '../context/FacturacionContext'
 
 /* ─────────────────────────── SVG Icons ──────────────────────────── */
 const IcoPaperPlane = () => (
@@ -61,54 +68,60 @@ const IcoInfo = () => (
   </svg>
 )
 
-/* ─────────────────────────── Mock Data ──────────────────────────── */
-const CLIENTES_LIST = ['Maped', 'Edding ARG', 'Edding COL', 'Ayax', 'TechCorp', 'Draftea', 'Grupo CL']
-const ESTADOS_LIST  = ['Enviado', 'Pendiente', 'Error']
-
-const HISTORIAL = Array.from({ length: 20 }, (_, i) => ({
-  id: i + 1,
-  factura: `FAC-2026-${String(130 - i).padStart(3, '0')}`,
-  cliente: CLIENTES_LIST[i % CLIENTES_LIST.length],
-  email: `admin@${CLIENTES_LIST[i % CLIENTES_LIST.length].toLowerCase().replace(/\s/g,'')}.com`,
-  fecha: `${String(1 + (i % 28)).padStart(2, '0')}/05/2026`,
-  estado: i % 7 === 3 ? 'Error' : i % 5 === 2 ? 'Pendiente' : 'Enviado',
-  entidad: i % 3 === 0 ? 'AFIP' : 'LLC',
-}))
-
-const PLANTILLAS_DATA = [
-  { id: 1, nombre: 'Factura Kyra - General', activa: true,  fecha: '15/03/2026',
-    asunto: 'Factura {{numero_factura}} - {{cliente}}',
-    mensaje: 'Estimado {{cliente}},\n\nAdjuntamos la factura correspondiente al mes de {{mes}}.\n\nQuedamos a disposición ante cualquier consulta.\n\nSaludos,\nEquipo Kyra' },
-  { id: 2, nombre: 'Factura LLC - Dólares',  activa: false, fecha: '02/04/2026',
-    asunto: 'Invoice {{invoice_number}} — {{client}}',
-    mensaje: 'Dear {{client}},\n\nPlease find attached your invoice for {{month}}.\n\nBest regards,\nKyra Team' },
-  { id: 3, nombre: 'Recordatorio de pago',  activa: false, fecha: '10/04/2026',
-    asunto: 'Recordatorio: Factura {{numero_factura}} pendiente de pago',
-    mensaje: 'Estimado {{cliente}},\n\nTe recordamos que la factura adjunta se encuentra pendiente de pago.\n\nGracias,\nKyra' },
-]
-
+/* ─────────────────────────── Helpers ────────────────────────────── */
 const PAGE_SIZE = 8
 
-function BadgeEstado({ estado }) {
-  const cls = estado === 'Enviado' ? 'email-badge-enviado'
-            : estado === 'Pendiente' ? 'email-badge-pendiente'
-            : 'email-badge-error'
-  return <span className={`email-badge ${cls}`}>{estado}</span>
+function formatFecha(isoStr) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function tipoDoc(archivoAdjunto) {
+  if (!archivoAdjunto) return '—'
+  return archivoAdjunto.startsWith('Invoice_') ? 'LLC' : 'AFIP'
+}
+
+function nombreCliente(clienteId) {
+  const c = CLIENTES_INICIAL.find(c => c.id === clienteId)
+  return c?.nombre || `Cliente ${clienteId}`
 }
 
 /* ─────────────────────────── Main Component ──────────────────────── */
 export default function Emails() {
-  const [tab, setTab]       = useState(0)
-  const [historial, setHistorial] = useState(HISTORIAL)
-  const [menuOpen, setMenuOpen]   = useState(null)   // id de fila con menú abierto
-  const [reenvioRow, setReenvioRow] = useState(null) // fila en modal de reenvío
+  const [tab, setTab]             = useState(0)
+
+  // ── Historial: HISTORIAL_INICIAL + lo generado en la sesión (desde contexto compartido) ──
+  const { historialEmail, addHistorialEmail } = useFacturacion()
+  const historial = [...HISTORIAL_INICIAL, ...historialEmail]
+  const [menuOpen, setMenuOpen]   = useState(null)
+  const [reenvioRow, setReenvioRow] = useState(null)
   const [reenvioDest, setReenvioDest] = useState('')
-  const [errorRow, setErrorRow]   = useState(null)   // fila en modal de detalle de error
+  const [reenvioCcs, setReenvioCcs]   = useState([])
+  const [errorRow, setErrorRow]   = useState(null)
   const [toast, setToast]         = useState(null)
   const menuRef = useRef(null)
   const reenvioTriggerRef = useRef(null)
 
-  // cerrar menú al hacer clic afuera
+  // ── Filtros / paginación ──
+  const [page, setPage]           = useState(1)
+  const [filtroEstado, setFiltroEstado]   = useState('')
+  const [filtroCliente, setFiltroCliente] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+
+  // ── Config de envío ──
+  const [config, setConfig]       = useState(CONFIG_EMAIL_INICIAL)
+  const [ccInput, setCcInput]     = useState('')
+
+  // ── Plantillas ──
+  const [plantillas, setPlantillas]         = useState(PLANTILLAS_INICIAL)
+  const [selectedPlantilla, setSelectedPlantilla] = useState(0)
+  const [editNombre, setEditNombre]   = useState(PLANTILLAS_INICIAL[0].nombre)
+  const [editAsunto, setEditAsunto]   = useState(PLANTILLAS_INICIAL[0].asunto)
+  const [editCuerpo, setEditCuerpo]   = useState(PLANTILLAS_INICIAL[0].cuerpo)
+
+  // ── Efectos ──
   useEffect(() => {
     if (menuOpen === null) return
     const close = e => { if (!menuRef.current?.contains(e.target)) setMenuOpen(null) }
@@ -116,86 +129,101 @@ export default function Emails() {
     return () => document.removeEventListener('mousedown', close)
   }, [menuOpen])
 
-  // toast auto-hide
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
 
-  const abrirReenvio = row => { setReenvioRow(row); setReenvioDest(row.email); setMenuOpen(null) }
+  // ── Historial handlers ──
+  const abrirReenvio = row => {
+    setReenvioRow(row)
+    setReenvioDest(row.emailDestino)
+    setReenvioCcs(row.ccs || [])
+    setMenuOpen(null)
+  }
+
   const confirmarReenvio = () => {
-    // Decisión de diseño: el reenvío agrega una NUEVA fila al historial (registro de auditoría),
-    // no actualiza la existente — así queda trazabilidad de cada envío.
-    const hoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    setHistorial(p => [{
+    const nuevoRegistro = {
       ...reenvioRow,
       id: Date.now(),
-      email: reenvioDest,
-      fecha: hoy,
-      estado: 'Enviado',
-    }, ...p])
+      emailDestino: reenvioDest,
+      ccs: reenvioCcs,
+      fechaEnvio: new Date().toISOString(),
+      estado: 'enviado',
+      errorMensaje: null,
+      intentos: (reenvioRow.intentos || 1) + 1,
+    }
+    addHistorialEmail(nuevoRegistro)
     setToast('Email reenviado a ' + reenvioDest)
     setReenvioRow(null)
   }
+
   const copiarDestinatario = row => {
-    navigator.clipboard?.writeText(row.email)
-    setToast('Destinatario copiado: ' + row.email)
+    navigator.clipboard?.writeText(row.emailDestino)
+    setToast('Destinatario copiado: ' + row.emailDestino)
     setMenuOpen(null)
   }
-  const [page, setPage]     = useState(1)
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState('')
-  const [filtroCliente, setFiltroCliente] = useState('')
-  const [ccEmails, setCcEmails]   = useState(['adminkyra@gmail.com', 'contablekyra@gmail.com'])
-  const [ccInput, setCcInput]     = useState('')
-  const [autoEnvio, setAutoEnvio] = useState(false)
-  const [selectedPlantilla, setSelectedPlantilla] = useState(0)
-  const [plantillas, setPlantillas] = useState(PLANTILLAS_DATA)
-  const [editNombre, setEditNombre] = useState(PLANTILLAS_DATA[0].nombre)
-  const [editAsunto, setEditAsunto] = useState(PLANTILLAS_DATA[0].asunto)
-  const [editMsg,    setEditMsg]    = useState(PLANTILLAS_DATA[0].mensaje)
 
-  /* Filter historial */
+  // ── Filtros ──
+  const clientesEnHistorial = [...new Set(historial.map(h => nombreCliente(h.clienteId)))]
+  const estadosFiltro = ['enviado', 'error', 'pendiente']
+
   const filtered = historial.filter(r => {
     if (filtroEstado && r.estado !== filtroEstado) return false
-    if (filtroCliente && r.cliente !== filtroCliente) return false
+    if (filtroCliente && nombreCliente(r.clienteId) !== filtroCliente) return false
+    if (fechaDesde && r.fechaEnvio < fechaDesde) return false
+    if (fechaHasta && r.fechaEnvio > fechaHasta + 'T23:59:59') return false
     return true
   })
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageData   = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  function selectPlantilla(idx) {
-    setSelectedPlantilla(idx)
-    setEditNombre(plantillas[idx].nombre)
-    setEditAsunto(plantillas[idx].asunto)
-    setEditMsg(plantillas[idx].mensaje)
-  }
+  // ── Stat cards calculados del historial real ──
+  const enviados  = historial.filter(h => h.estado === 'enviado').length
+  const pendientes = historial.filter(h => h.estado === 'pendiente').length
+  const errores   = historial.filter(h => h.estado === 'error').length
+  const totalEnvios = historial.length
 
-  function guardarPlantilla() {
-    setPlantillas(prev => prev.map((p, i) =>
-      i === selectedPlantilla ? { ...p, nombre: editNombre, asunto: editAsunto, mensaje: editMsg, fecha: new Date().toLocaleDateString('es-AR') } : p
-    ))
-  }
+  const STAT_CARDS = [
+    { icon: <IcoPaperPlane />, label: 'Enviados',   value: String(enviados),  sub: `${Math.round(enviados / totalEnvios * 100) || 0}% del total` },
+    { icon: <IcoClock />,      label: 'Pendientes', value: String(pendientes), sub: `${Math.round(pendientes / totalEnvios * 100) || 0}% del total` },
+    { icon: <IcoTriangle />,   label: 'Con error',  value: String(errores),   sub: `${Math.round(errores / totalEnvios * 100) || 0}% del total` },
+    { icon: <IcoEnvelope />,   label: 'Total',      value: String(totalEnvios), sub: '100% del total' },
+  ]
 
+  // ── Config CC handlers ──
   function addCc(e) {
     e.preventDefault()
     const val = ccInput.trim()
-    if (val && !ccEmails.includes(val)) setCcEmails(prev => [...prev, val])
+    if (val && !(config.ccs || []).includes(val)) {
+      setConfig(prev => ({ ...prev, ccs: [...(prev.ccs || []), val] }))
+    }
     setCcInput('')
   }
 
   function removeCc(email) {
-    setCcEmails(prev => prev.filter(e => e !== email))
+    setConfig(prev => ({ ...prev, ccs: (prev.ccs || []).filter(e => e !== email) }))
   }
 
-  const STAT_CARDS = [
-    { icon: <IcoPaperPlane />, label: 'Enviados',  value: '42', sub: '82% del total' },
-    { icon: <IcoClock />,      label: 'Pendientes', value: '6',  sub: '12% del total' },
-    { icon: <IcoTriangle />,   label: 'Con error',  value: '3',  sub: '6% del total'  },
-    { icon: <IcoEnvelope />,   label: 'Total',      value: '51', sub: '100% del total' },
-  ]
+  // ── Plantillas handlers ──
+  function selectPlantilla(idx) {
+    setSelectedPlantilla(idx)
+    setEditNombre(plantillas[idx].nombre)
+    setEditAsunto(plantillas[idx].asunto)
+    setEditCuerpo(plantillas[idx].cuerpo)
+  }
+
+  function guardarPlantilla() {
+    setPlantillas(prev => prev.map((p, i) =>
+      i === selectedPlantilla
+        ? { ...p, nombre: editNombre, asunto: editAsunto, cuerpo: editCuerpo, ultimaModificacion: new Date().toISOString().slice(0, 10) }
+        : p
+    ))
+    setToast('Plantilla guardada')
+  }
+
+  const plantillaDefault = plantillas.find(p => p.id === config.plantillaDefaultId) || plantillas[0]
 
   return (
     <div className="emails-page">
@@ -212,20 +240,22 @@ export default function Emails() {
         <div className="email-filter-date">
           <label htmlFor="fecha-desde" className="filter-label-sm">Fecha desde</label>
           <input id="fecha-desde" type="date" className="email-date-input"
-            value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} />
+            value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setPage(1) }} />
         </div>
         <span className="email-filter-sep">–</span>
         <div className="email-filter-date">
           <label htmlFor="fecha-hasta" className="filter-label-sm">Fecha hasta</label>
           <input id="fecha-hasta" type="date" className="email-date-input"
-            value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} />
+            value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setPage(1) }} />
         </div>
         <div className="email-filter-select-wrap">
           <label htmlFor="fil-estado" className="filter-label-sm">Estado</label>
           <select id="fil-estado" className="email-filter-select"
             value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(1) }}>
             <option value="">Todos los estados</option>
-            {ESTADOS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            {estadosFiltro.map(s => (
+              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
           </select>
         </div>
         <div className="email-filter-select-wrap">
@@ -233,7 +263,7 @@ export default function Emails() {
           <select id="fil-cliente" className="email-filter-select"
             value={filtroCliente} onChange={e => { setFiltroCliente(e.target.value); setPage(1) }}>
             <option value="">Todos los clientes</option>
-            {CLIENTES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+            {clientesEnHistorial.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </div>
@@ -266,7 +296,7 @@ export default function Emails() {
             onClick={() => setTab(i)}
             onKeyDown={e => {
               if (e.key === 'ArrowRight') setTab(prev => (prev + 1) % 2)
-              if (e.key === 'ArrowLeft') setTab(prev => (prev + 1) % 2)
+              if (e.key === 'ArrowLeft')  setTab(prev => (prev + 1) % 2)
             }}
           >{t}</button>
         ))}
@@ -287,28 +317,38 @@ export default function Emails() {
                   <th>Email destinatario</th>
                   <th>Fecha envío</th>
                   <th>Estado</th>
-                  <th>Entidad</th>
+                  <th>Tipo</th>
                   <th aria-label="Acciones"></th>
                 </tr>
               </thead>
               <tbody>
-                {pageData.map(row => (
+                {pageData.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
+                      Sin resultados para los filtros aplicados
+                    </td>
+                  </tr>
+                ) : pageData.map(row => (
                   <tr key={row.id}>
                     <td>
                       <a href="#" className="factura-link" onClick={e => e.preventDefault()}>
                         <IcoPdf />
-                        <span>{row.factura}</span>
+                        <span>{row.nroFactura}</span>
                       </a>
                     </td>
-                    <td>{row.cliente}</td>
-                    <td className="text-muted-sm">{row.email}</td>
-                    <td className="text-muted-sm">{row.fecha}</td>
-                    <td><BadgeEstado estado={row.estado} /></td>
-                    <td className="text-muted-sm">{row.entidad}</td>
+                    <td>{nombreCliente(row.clienteId)}</td>
+                    <td className="text-muted-sm">{row.emailDestino}</td>
+                    <td className="text-muted-sm">{formatFecha(row.fechaEnvio)}</td>
+                    <td><BadgeEstadoEnvio estado={row.estado} size="sm" /></td>
+                    <td className="text-muted-sm">{tipoDoc(row.archivoAdjunto)}</td>
                     <td className="row-menu-cell">
-                      <button className="btn-more" aria-haspopup="true" aria-expanded={menuOpen === row.id}
-                        aria-label={'Acciones para ' + row.factura}
-                        onClick={() => setMenuOpen(menuOpen === row.id ? null : row.id)}>
+                      <button
+                        className="btn-more"
+                        aria-haspopup="true"
+                        aria-expanded={menuOpen === row.id}
+                        aria-label={'Acciones para ' + row.nroFactura}
+                        onClick={() => setMenuOpen(menuOpen === row.id ? null : row.id)}
+                      >
                         <IcoMore />
                       </button>
                       {menuOpen === row.id && (
@@ -316,14 +356,16 @@ export default function Emails() {
                           <button role="menuitem" className="row-menu-item" onClick={() => abrirReenvio(row)}>
                             Reenviar email
                           </button>
-                          <button role="menuitem" className="row-menu-item" onClick={() => { setMenuOpen(null); setToast('Abriendo PDF de ' + row.factura + '…') }}>
+                          <button role="menuitem" className="row-menu-item"
+                            onClick={() => { setMenuOpen(null); setToast('Descargando ' + (row.archivoAdjunto || 'PDF') + '…') }}>
                             Ver PDF adjunto
                           </button>
                           <button role="menuitem" className="row-menu-item" onClick={() => copiarDestinatario(row)}>
                             Copiar destinatario
                           </button>
-                          {row.estado === 'Error' && (
-                            <button role="menuitem" className="row-menu-item row-menu-item-error" onClick={() => { setErrorRow(row); setMenuOpen(null) }}>
+                          {row.estado === 'error' && (
+                            <button role="menuitem" className="row-menu-item row-menu-item-error"
+                              onClick={() => { setErrorRow(row); setMenuOpen(null) }}>
                               Ver detalle del error
                             </button>
                           )}
@@ -339,7 +381,9 @@ export default function Emails() {
           {/* Pagination */}
           <div className="email-pagination">
             <span className="pagination-info">
-              Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} de {filtered.length}
+              {filtered.length === 0
+                ? 'Sin resultados'
+                : `Mostrando ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} de ${filtered.length}`}
             </span>
             <div className="pagination-pages">
               <button className="page-btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹</button>
@@ -368,18 +412,22 @@ export default function Emails() {
           <div className="email-card email-card-plantilla">
             <div className="email-card-header">
               <span className="email-card-title">Plantilla de email activa</span>
-              <button className="btn-editar-plantilla">
+              <button className="btn-editar-plantilla" onClick={() => setTab(1)}>
                 <IcoEdit /> Editar plantilla
               </button>
             </div>
             <div className="email-card-body">
               <div className="email-plantilla-row">
                 <span className="epr-label">Plantilla:</span>
-                <span className="epr-value">Factura Kyra - General</span>
+                <span className="epr-value">{plantillaDefault.nombre}</span>
               </div>
               <div className="email-plantilla-row">
                 <span className="epr-label">Asunto:</span>
-                <span className="epr-value text-mono">Factura {`{{numero_factura}}`} - {`{{cliente}}`}</span>
+                <span className="epr-value text-mono">{plantillaDefault.asunto}</span>
+              </div>
+              <div className="email-plantilla-row">
+                <span className="epr-label">Remitente:</span>
+                <span className="epr-value">{config.nombreRemitente} &lt;{config.emailRemitente}&gt;</span>
               </div>
               <div className="email-plantilla-badge-row">
                 <span className="badge-activa">
@@ -396,9 +444,9 @@ export default function Emails() {
               <span className="email-card-title">Envío automático</span>
               <button
                 role="switch"
-                aria-checked={autoEnvio}
-                className={'email-toggle' + (autoEnvio ? ' on' : '')}
-                onClick={() => setAutoEnvio(p => !p)}
+                aria-checked={config.envioAutomaticoGlobal}
+                className={'email-toggle' + (config.envioAutomaticoGlobal ? ' on' : '')}
+                onClick={() => setConfig(prev => ({ ...prev, envioAutomaticoGlobal: !prev.envioAutomaticoGlobal }))}
                 aria-label="Activar envío automático"
               >
                 <span className="email-toggle-knob" />
@@ -407,7 +455,7 @@ export default function Emails() {
             <div className="email-card-body">
               <p className="email-cc-label">Incluir en copia (CC):</p>
               <div className="email-chips-row">
-                {ccEmails.map(e => (
+                {(config.ccs || []).map(e => (
                   <span key={e} className="email-chip">
                     {e}
                     <button className="chip-remove" aria-label={`Quitar ${e}`} onClick={() => removeCc(e)}>×</button>
@@ -418,7 +466,7 @@ export default function Emails() {
                 <input
                   className="email-cc-input"
                   type="email"
-                  placeholder="Agregar email"
+                  placeholder="Agregar email CC"
                   value={ccInput}
                   onChange={e => setCcInput(e.target.value)}
                 />
@@ -459,8 +507,8 @@ export default function Emails() {
                 <IcoEnvSm />
                 <div className="pli-body">
                   <span className="pli-name">{p.nombre}</span>
-                  {p.activa && <span className="pli-badge">Activa</span>}
-                  <span className="pli-date">Actualizada: {p.fecha}</span>
+                  {p.id === config.plantillaDefaultId && <span className="pli-badge">Activa</span>}
+                  <span className="pli-date">Actualizada: {p.ultimaModificacion}</span>
                 </div>
               </button>
             ))}
@@ -468,88 +516,84 @@ export default function Emails() {
 
           {/* Right: editor */}
           <div className="plantilla-editor">
-            <div className="pe-field">
-              <label className="pe-label" htmlFor="pe-nombre">Nombre de la plantilla</label>
-              <input id="pe-nombre" className="pe-input" value={editNombre}
-                onChange={e => setEditNombre(e.target.value)} />
-            </div>
-            <div className="pe-field">
-              <label className="pe-label" htmlFor="pe-asunto">Asunto</label>
-              <input id="pe-asunto" className="pe-input" value={editAsunto}
-                onChange={e => setEditAsunto(e.target.value)} />
-            </div>
-            <div className="pe-field">
-              <label className="pe-label" htmlFor="pe-msg">Mensaje</label>
-              <div className="richtext-toolbar" aria-label="Herramientas de formato">
-                <select className="rtt-para" aria-label="Estilo de párrafo"><option>Párrafo</option><option>H1</option><option>H2</option></select>
-                <button className="rtt-btn" type="button" aria-label="Fuente">Aa</button>
-                <button className="rtt-btn rtt-bold" type="button" aria-label="Negrita">B</button>
-                <button className="rtt-btn rtt-italic" type="button" aria-label="Cursiva"><em>T</em></button>
-                <button className="rtt-btn" type="button" aria-label="Tachado"><s>ƒ</s></button>
-                <button className="rtt-btn" type="button" aria-label="Lista ordenada">≡</button>
-                <button className="rtt-btn" type="button" aria-label="Lista desordenada">≣</button>
-                <button className="rtt-btn" type="button" aria-label="Enlace">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                </button>
-                <button className="rtt-btn" type="button" aria-label="Adjuntar">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                </button>
-              </div>
-              <textarea id="pe-msg" className="pe-textarea" rows={8} value={editMsg}
-                onChange={e => setEditMsg(e.target.value)} />
-            </div>
-            <button className="btn-guardar ready" onClick={guardarPlantilla}>Guardar cambios</button>
+            <EditorPlantilla
+              nombre={editNombre}
+              asunto={editAsunto}
+              cuerpo={editCuerpo}
+              esActiva={plantillas[selectedPlantilla]?.id === config.plantillaDefaultId}
+              emailPreview={
+                CLIENTES_INICIAL.find(c => c.emailConfig?.emailPrincipal)?.emailConfig?.emailPrincipal
+                || 'contacto@ayax.com.ar'
+              }
+              onChange={({ nombre, asunto, cuerpo }) => {
+                setEditNombre(nombre)
+                setEditAsunto(asunto)
+                setEditCuerpo(cuerpo)
+              }}
+              onGuardar={guardarPlantilla}
+              onActivar={() => {
+                setConfig(prev => ({ ...prev, plantillaDefaultId: plantillas[selectedPlantilla].id }))
+                setToast('Plantilla activada: ' + plantillas[selectedPlantilla].nombre)
+              }}
+            />
           </div>
         </div>
 
-        {/* Bottom area: preview + info */}
-        <div className="plantillas-bottom-area">
-          {/* Preview */}
-          <div className="email-preview-card">
-            <h3 className="email-preview-title">Vista previa del email</h3>
-            <div className="email-preview-meta">
-              <span className="ep-meta-row"><strong>Para:</strong> admin@maped.com</span>
-              <span className="ep-meta-row"><strong>Asunto:</strong> {editAsunto.replace('{{numero_factura}}', 'FAC-131').replace('{{cliente}}', 'Maped')}</span>
+        {/* Info card — datos estadísticos de la plantilla seleccionada */}
+        <div className="plantilla-info-card" style={{ marginTop: 24 }}>
+          <h3 className="plantilla-info-title">
+            Información de la plantilla <IcoInfo />
+          </h3>
+          <h4 className="plantilla-info-name">{plantillas[selectedPlantilla].nombre}</h4>
+          <div className="pi-rows">
+            <div className="pi-row">
+              <span className="pi-key">Estado:</span>
+              <span className="pi-val">
+                {plantillas[selectedPlantilla].id === config.plantillaDefaultId
+                  ? <><span className="dot-activo" aria-hidden="true">●</span> Activa</>
+                  : <><span className="dot-inactivo" aria-hidden="true">●</span> Inactiva</>}
+              </span>
             </div>
-            <div className="email-preview-body">
-              <div className="email-preview-logo">KYRA</div>
-              <p className="ep-body-text">
-                {editMsg.split('\n').map((line, i) => (
-                  <span key={i}>{line.replace('{{cliente}}', 'Maped').replace('{{mes}}', 'junio 2026')}<br /></span>
-                ))}
-              </p>
+            <div className="pi-row">
+              <span className="pi-key">Tipo:</span>
+              <span className="pi-val">{plantillas[selectedPlantilla].tipo}</span>
+            </div>
+            <div className="pi-row">
+              <span className="pi-key">Última edición:</span>
+              <span className="pi-val">{plantillas[selectedPlantilla].ultimaModificacion}</span>
+            </div>
+            <div className="pi-row">
+              <span className="pi-key">Envíos exitosos:</span>
+              <span className="pi-val">
+                {historial.filter(h => h.plantillaId === plantillas[selectedPlantilla].id && h.estado === 'enviado').length}
+              </span>
             </div>
           </div>
-
-          {/* Info */}
-          <div className="plantilla-info-card">
-            <h3 className="plantilla-info-title">
-              Información de la plantilla <IcoInfo />
-            </h3>
-            <h4 className="plantilla-info-name">{plantillas[selectedPlantilla].nombre}</h4>
-            <div className="pi-rows">
-              <div className="pi-row">
-                <span className="pi-key">Estado:</span>
-                <span className="pi-val">
-                  {plantillas[selectedPlantilla].activa
-                    ? <><span className="dot-activo" aria-hidden="true">●</span> Activa</>
-                    : <><span className="dot-inactivo" aria-hidden="true">●</span> Inactiva</>}
-                </span>
-              </div>
-              <div className="pi-row"><span className="pi-key">Creada el:</span><span className="pi-val">15/01/2026</span></div>
-              <div className="pi-row"><span className="pi-key">Última edición:</span><span className="pi-val">{plantillas[selectedPlantilla].fecha}</span></div>
-              <div className="pi-row"><span className="pi-key">Último envío:</span><span className="pi-val">01/06/2026</span></div>
-              <div className="pi-row"><span className="pi-key">Usada en:</span><span className="pi-val">42 envíos</span></div>
-            </div>
-            <div className="pi-actions">
-              <button className="btn-eliminar">Eliminar plantilla</button>
-              <button className="btn-usar">Usar plantilla</button>
-            </div>
+          <div className="pi-actions">
+            <button
+              className="btn-eliminar"
+              onClick={() => {
+                if (plantillas.length <= 1) { setToast('No podés eliminar la única plantilla'); return }
+                setPlantillas(prev => prev.filter((_, i) => i !== selectedPlantilla))
+                setSelectedPlantilla(0)
+                setEditNombre(plantillas[0].nombre)
+                setEditAsunto(plantillas[0].asunto)
+                setEditCuerpo(plantillas[0].cuerpo)
+                setToast('Plantilla eliminada')
+              }}
+            >
+              Eliminar plantilla
+            </button>
           </div>
         </div>
       </div>
-      {/* ── Modal de reenvío (T07) ── */}
-      <Modal isOpen={!!reenvioRow} onClose={() => setReenvioRow(null)} title="REENVIAR EMAIL" triggerRef={reenvioTriggerRef}
+
+      {/* ── Modal de reenvío ── */}
+      <Modal
+        isOpen={!!reenvioRow}
+        onClose={() => setReenvioRow(null)}
+        title="REENVIAR EMAIL"
+        triggerRef={reenvioTriggerRef}
         footer={
           <div className="modal-footer-inner">
             <div className="modal-validation" />
@@ -558,11 +602,12 @@ export default function Emails() {
               <button className="btn-guardar ready" onClick={confirmarReenvio}>Reenviar</button>
             </div>
           </div>
-        }>
+        }
+      >
         {reenvioRow && (
           <>
             <p className="reenvio-desc">
-              Vas a reenviar <strong>{reenvioRow.factura}</strong> ({reenvioRow.cliente}) con el PDF adjunto.
+              Vas a reenviar <strong>{reenvioRow.nroFactura}</strong> ({nombreCliente(reenvioRow.clienteId)}) con el PDF adjunto.
               El reenvío queda registrado como un envío nuevo en el historial.
             </p>
             <div className="form-group">
@@ -571,12 +616,26 @@ export default function Emails() {
                 value={reenvioDest} onChange={e => setReenvioDest(e.target.value)} />
               <span className="field-hint">Podés cambiar el destinatario antes de reenviar</span>
             </div>
+            {reenvioCcs.length > 0 && (
+              <div className="form-group">
+                <label>CC</label>
+                <div className="email-chips-row" style={{ marginTop: 4 }}>
+                  {reenvioCcs.map(cc => (
+                    <span key={cc} className="email-chip">{cc}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </Modal>
 
-      {/* ── Modal detalle del error (T07) ── */}
-      <Modal isOpen={!!errorRow} onClose={() => setErrorRow(null)} title="DETALLE DEL ERROR" triggerRef={reenvioTriggerRef}
+      {/* ── Modal detalle del error ── */}
+      <Modal
+        isOpen={!!errorRow}
+        onClose={() => setErrorRow(null)}
+        title="DETALLE DEL ERROR"
+        triggerRef={reenvioTriggerRef}
         footer={
           <div className="modal-footer-inner">
             <div className="modal-validation" />
@@ -584,16 +643,18 @@ export default function Emails() {
               Reintentar envío
             </button>
           </div>
-        }>
+        }
+      >
         {errorRow && (
           <div className="error-detail">
-            <div className="error-detail-row"><span className="error-detail-key">Factura</span><span>{errorRow.factura}</span></div>
-            <div className="error-detail-row"><span className="error-detail-key">Cliente</span><span>{errorRow.cliente}</span></div>
-            <div className="error-detail-row"><span className="error-detail-key">Destinatario</span><span>{errorRow.email}</span></div>
-            <div className="error-detail-row"><span className="error-detail-key">Fecha del intento</span><span>{errorRow.fecha}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Factura</span><span>{errorRow.nroFactura}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Cliente</span><span>{nombreCliente(errorRow.clienteId)}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Destinatario</span><span>{errorRow.emailDestino}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Fecha del intento</span><span>{formatFecha(errorRow.fechaEnvio)}</span></div>
+            <div className="error-detail-row"><span className="error-detail-key">Intentos</span><span>{errorRow.intentos}</span></div>
             <div className="error-detail-msg">
               <IcoTriangle />
-              <span>El servidor de correo del destinatario rechazó el mensaje (buzón lleno o dirección inexistente). Verificá la dirección antes de reintentar.</span>
+              <span>{errorRow.errorMensaje || 'Error desconocido. Intentá reenviar en unos minutos.'}</span>
             </div>
           </div>
         )}
