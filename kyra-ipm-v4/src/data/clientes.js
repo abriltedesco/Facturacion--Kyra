@@ -1,7 +1,7 @@
 // /src/data/clientes.js
 // Mock data de los clientes activos de Kyra.
 // No hay backend — este array es la fuente de verdad para el frontend.
-// entidadEmisoraId referencia el id de ENTIDADES_INICIAL en /data/entidades.js
+// entidadEmisoraId referencia las entidades 1-3 del seed local de Supabase.
 //
 // emailConfig.plantillaId: null = usar plantilla default del configEnvioEmail
 // emailConfig.envioAutomatico: controla si este cliente recibe envío automático

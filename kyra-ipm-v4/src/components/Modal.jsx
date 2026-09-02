@@ -2,7 +2,18 @@ import { useEffect, useRef } from 'react'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export default function Modal({ isOpen, onClose, title, children, footer, triggerRef }) {
+export default function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  triggerRef,
+  initialFocusRef,
+  dialogRole = 'dialog',
+  descriptionId,
+  className = '',
+}) {
   const boxRef = useRef(null)
   const headingId = 'modal-heading'
 
@@ -11,8 +22,10 @@ export default function Modal({ isOpen, onClose, title, children, footer, trigge
   // creates a new reference on every parent re-render / every keystroke).
   const onCloseRef = useRef(onClose)
   const triggerRefStore = useRef(triggerRef)
+  const initialFocusRefStore = useRef(initialFocusRef)
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
   useEffect(() => { triggerRefStore.current = triggerRef }, [triggerRef])
+  useEffect(() => { initialFocusRefStore.current = initialFocusRef }, [initialFocusRef])
 
   useEffect(() => {
     if (!isOpen) {
@@ -26,7 +39,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, trigge
     const firstInput = allFocusable.find(el =>
       el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA'
     )
-    ;(firstInput || allFocusable[0])?.focus()
+    ;(initialFocusRefStore.current?.current || firstInput || allFocusable[0])?.focus()
 
     const handleKey = (e) => {
       if (e.key === 'Escape') { onCloseRef.current(); return }
@@ -61,10 +74,11 @@ export default function Modal({ isOpen, onClose, title, children, footer, trigge
       onClick={e => { if (e.target === e.currentTarget) onCloseRef.current() }}
     >
       <div
-        className="modal-box"
-        role="dialog"
+        className={`modal-box${className ? ` ${className}` : ''}`}
+        role={dialogRole}
         aria-modal="true"
         aria-labelledby={headingId}
+        aria-describedby={descriptionId}
         ref={boxRef}
       >
         <div className="modal-header">

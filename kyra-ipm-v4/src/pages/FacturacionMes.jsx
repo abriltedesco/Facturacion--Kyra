@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
 import { useFacturacion } from '../context/FacturacionContext'
+import { useEntities } from '../context/EntitiesContext'
 import Modal from '../components/Modal'
 import { CLIENTES_INICIAL } from '../data/clientes'
-import { ENTIDADES_INICIAL } from '../data/entidades'
 import { SERVICIOS_INICIAL } from '../data/servicios'
 import { HISTORIAL_INICIAL } from '../data/historialEnvios'
 import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
@@ -10,6 +10,8 @@ import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
 import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
 import HistorialEnviosDrawer from '../components/Emails/HistorialEnviosDrawer'
 import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
+import { getAllowedVoucherTypes } from '../domain/entityRules'
+import { generarNroFactura } from '../data/contadoresFactura'
 
 
 const MES_LABEL   = 'Agosto 2026'
@@ -64,14 +66,13 @@ function calcImpuesto(neto, tipoFactura) {
 
 // ─── Business logic ──────────────────────────────────────────────────────────
 
-function contadorNroFac(lineas, entidadId) {
-  const prefix = entidadId === 1 ? '0001' : '0002'
+function contadorNroFac(lineas, entidad, tipoFactura, anio) {
   const existing = lineas
-    .filter(l => l.nroFactura && l.entidadId === entidadId)
-    .map(l => parseInt(l.nroFactura.split('-')[1], 10))
+    .filter(linea => linea.nroFactura && String(linea.entidadId) === String(entidad?.id) && linea.tipoFactura === tipoFactura)
+    .map(linea => parseInt(linea.nroFactura.split('-').at(-1), 10))
     .filter(n => !isNaN(n))
   const max = existing.length ? Math.max(...existing) : 0
-  return `${prefix}-${String(max + 1).padStart(8, '0')}`
+  return generarNroFactura(max + 1, tipoFactura, entidad, anio)
 }
 
 function variLabel(diff, moneda) {
@@ -410,7 +411,7 @@ function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar }) 
       {/* Meta + actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ fontSize: '12px', opacity: .5 }}>
-          {entidad?.nombre} · Factura {linea.tipoFactura} · {linea.moneda}
+          {entidad?.name} · Factura {linea.tipoFactura} · {linea.moneda}
           {linea.variacionVsMesAnterior != null && linea.variacionVsMesAnterior !== 0 && (
             <span style={{ marginLeft: '8px', color: linea.variacionVsMesAnterior > 0 ? '#27ae60' : '#c0392b' }}>
               {variLabel(linea.variacionVsMesAnterior, linea.moneda)}
@@ -498,7 +499,7 @@ function ServiceLineAprobada({ linea, entidad, servicio, onEmitir, onRechazar })
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ fontSize: '12px', opacity: .5 }}>
-          {entidad?.nombre} · Factura {linea.tipoFactura} · {linea.moneda}
+          {entidad?.name} · Factura {linea.tipoFactura} · {linea.moneda}
           {linea.variacionVsMesAnterior != null && linea.variacionVsMesAnterior !== 0 && (
             <span style={{ marginLeft: '8px', color: linea.variacionVsMesAnterior > 0 ? '#27ae60' : '#c0392b' }}>
               {variLabel(linea.variacionVsMesAnterior, linea.moneda)}
@@ -589,7 +590,7 @@ function ServiceLineEmitida({ linea, entidad, servicio, onVerDetalle, onEnviar, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '12px', opacity: .5 }}>
-            {entidad?.nombre} · Emitida {fmtFecha(linea.fechaEmision)}
+            {entidad?.name} · Emitida {fmtFecha(linea.fechaEmision)}
           </span>
           <BadgeEstadoEnvio estado={emailEstado} size="sm" />
         </div>
@@ -673,7 +674,7 @@ function ServiceLineEnviada({ linea, entidad, servicio, onVerDetalle, onVerEmail
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '12px', opacity: .5 }}>
-            {entidad?.nombre} · Vence {fmtFecha(linea.fechaVencimiento)}
+            {entidad?.name} · Vence {fmtFecha(linea.fechaVencimiento)}
           </span>
           <BadgeEstadoEnvio estado={emailEstado} size="sm" />
         </div>
@@ -783,7 +784,7 @@ function DrawerFactura({ linea, onClose, clientes, entidades, servicios }) {
           {[
             ['Cliente',      cliente?.nombre],
             ['Servicio',     servicio?.nombre],
-            ['Entidad',      entidad?.nombre],
+            ['Entidad',      entidad?.name],
             ['Tipo factura', `Factura ${linea.tipoFactura}`],
             ['Nro. factura', linea.nroFactura],
             ['Período',      `${linea.mes?.charAt(0).toUpperCase() + linea.mes?.slice(1)} ${linea.anio}`],
@@ -923,7 +924,6 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
 
 // ─── Modal Nueva Factura ──────────────────────────────────────────────────────
 
-const TIPOS_FACTURA = ['A', 'C', 'LLC']
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 
 function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, servicios, triggerRef }) {
@@ -945,6 +945,21 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
   const esHoras  = servSel?.tipo === 'por_hora'
   const clienteSel = clientes.find(c => String(c.id) === String(form.clienteId))
   const entidadSel = entidades.find(e => String(e.id) === String(form.entidadId))
+  const tiposFactura = entidadSel
+    ? getAllowedVoucherTypes(entidadSel).map(tipo => tipo === 'B_EXEMPT' ? 'B' : tipo)
+    : []
+
+  function setEntidad(entidadId) {
+    const entidad = entidades.find(item => String(item.id) === String(entidadId))
+    const tipoFactura = entidad?.defaultVoucher === 'B_EXEMPT' ? 'B' : entidad?.defaultVoucher
+    setForm(current => ({
+      ...current,
+      entidadId,
+      tipoFactura: tipoFactura || '',
+      moneda: entidad?.legalType === 'llc' ? 'USD' : current.moneda,
+    }))
+    setErrors(current => ({ ...current, entidadId: '', tipoFactura: '' }))
+  }
 
   function validatePaso0() {
     const e = {}
@@ -952,6 +967,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
     if (!form.servicioId)  e.servicioId  = 'Seleccioná un servicio'
     if (!form.entidadId)   e.entidadId   = 'Seleccioná una entidad'
     if (!form.tipoFactura) e.tipoFactura = 'Requerido'
+    if (entidadSel && !tiposFactura.includes(form.tipoFactura)) e.tipoFactura = 'No disponible para esta entidad'
     return e
   }
 
@@ -1096,17 +1112,19 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
           <div style={{ display: 'flex', gap: '12px' }}>
             <div className="form-group" style={{ flex: 1 }}>
               <label>Entidad emisora <span className="label-req">*</span></label>
-              <select className="form-select" value={form.entidadId} onChange={e => setF('entidadId', e.target.value)}>
+              <select className="form-select" value={form.entidadId} onChange={e => setEntidad(e.target.value)}>
                 <option value="">— Seleccioná —</option>
-                {entidades.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                {entidades.map(entidad => <option key={entidad.id} value={entidad.id}>{entidad.name}</option>)}
               </select>
               {errors.entidadId && <div className="form-field-error">{errors.entidadId}</div>}
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label>Tipo factura <span className="label-req">*</span></label>
               <select className="form-select" value={form.tipoFactura} onChange={e => setF('tipoFactura', e.target.value)}>
-                {TIPOS_FACTURA.map(t => <option key={t} value={t}>Factura {t}</option>)}
+                {!entidadSel && <option value="">— Seleccioná entidad —</option>}
+                {tiposFactura.map(tipo => <option key={tipo} value={tipo}>{tipo === 'LLC' ? 'Invoice LLC' : `Factura ${tipo}`}</option>)}
               </select>
+              {errors.tipoFactura && <div className="form-field-error">{errors.tipoFactura}</div>}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
@@ -1218,6 +1236,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 
 export default function FacturacionMes() {
   const { lineas, setLineas, historialEmail, addHistorialEmail } = useFacturacion()
+  const { entities: entidades, activeEntities } = useEntities()
   const [tabActivo,       setTabActivo]       = useState('revision')
   const [drawerLinea,     setDrawerLinea]     = useState(null)
   const [emailDrawerLinea, setEmailDrawerLinea] = useState(null)
@@ -1227,7 +1246,6 @@ export default function FacturacionMes() {
   const btnNuevaRef = useRef(null)
 
   const clientes  = CLIENTES_INICIAL
-  const entidades = ENTIDADES_INICIAL
   const servicios = SERVICIOS_INICIAL
 
   // ── Email helpers ────────────────────────────────────────────────────────────
@@ -1286,7 +1304,8 @@ export default function FacturacionMes() {
     let lineaEmitida
     setLineas(ls => {
       const linea  = ls.find(l => l.id === id)
-      const nroFac = contadorNroFac(ls, linea?.entidadId)
+      const entidad = entidades.find(item => String(item.id) === String(linea?.entidadId))
+      const nroFac = contadorNroFac(ls, entidad, linea?.tipoFactura, linea?.anio)
       lineaEmitida = {
         ...linea, status: 'emitida', nroFactura: nroFac,
         fechaEmision: fechaHoy(),
@@ -1530,7 +1549,7 @@ export default function FacturacionMes() {
         onClose={() => setShowNueva(false)}
         onAgregar={agregarLinea}
         clientes={clientes}
-        entidades={entidades}
+        entidades={activeEntities}
         servicios={servicios}
         triggerRef={btnNuevaRef}
       />

@@ -5,14 +5,6 @@
 
 import { jsPDF } from 'jspdf'
 
-const MERCURY_LLC = {
-  name:    'Mercury LLC',
-  address: '1234 Brickell Ave, Suite 500',
-  city:    'Miami, FL 33131, USA',
-  email:   'billing@kyraagency.com',
-  ein:     'EIN: 82-1234567',
-}
-
 const MESES_EN = {
   enero: 'January', febrero: 'February', marzo: 'March',
   abril: 'April',   mayo: 'May',        junio: 'June',
@@ -28,7 +20,10 @@ const MESES_EN = {
  * @param {string} nroInvoice — e.g. "INV-2026-042"
  * @returns {string} dataUri del PDF generado (para preview)
  */
-export function generarPDFllc({ linea, cliente, servicio, nroInvoice }) {
+export function generarPDFllc({ linea, cliente, servicio, nroInvoice, entidad }) {
+  if (!entidad || entidad.legalType !== 'llc') {
+    throw new Error('Se necesita una LLC válida para generar el invoice.')
+  }
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const margin = 20
@@ -47,15 +42,14 @@ export function generarPDFllc({ linea, cliente, servicio, nroInvoice }) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(22)
   doc.setTextColor(...negro)
-  doc.text(MERCURY_LLC.name, margin, 20)
+  doc.text(entidad.name, margin, 20)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(...gris)
-  doc.text(MERCURY_LLC.address, margin, 27)
-  doc.text(MERCURY_LLC.city,    margin, 32)
-  doc.text(MERCURY_LLC.email,   margin, 37)
-  doc.text(MERCURY_LLC.ein,     margin, 42)
+  doc.text(doc.splitTextToSize(entidad.fiscalAddress, 75).slice(0, 2), margin, 27)
+  if (entidad.billingEmail) doc.text(entidad.billingEmail, margin, 37)
+  doc.text(`${entidad.fiscalIdType}: ${entidad.fiscalId}`, margin, 42)
 
   // INVOICE label (derecha)
   doc.setFont('helvetica', 'bold')
@@ -171,12 +165,21 @@ export function generarPDFllc({ linea, cliente, servicio, nroInvoice }) {
   doc.text('Payment terms: Net 30 days. Please transfer to the account on file.', margin, y)
   doc.text('Thank you for your business.', margin, y + 5)
 
+  const paymentAccount = entidad.bankAccounts?.find(account => account.isPrimary && account.currency === linea.moneda)
+    || entidad.bankAccounts?.find(account => account.isPrimary)
+  if (paymentAccount) {
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Bank: ${paymentAccount.bankName}`, margin, y + 13)
+    doc.text(`Account: ${paymentAccount.accountNumber}${paymentAccount.routingNumber ? ` · Routing: ${paymentAccount.routingNumber}` : ''}`, margin, y + 18)
+    if (paymentAccount.swiftBic) doc.text(`SWIFT/BIC: ${paymentAccount.swiftBic}`, margin, y + 23)
+  }
+
   // Línea y número de página
   doc.setDrawColor(...grisCla)
   doc.line(margin, 280, W - margin, 280)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
-  doc.text(`${MERCURY_LLC.name} · ${nroInvoice}`, margin, 285)
+  doc.text(`${entidad.name} · ${nroInvoice}`, margin, 285)
   doc.text('Page 1 of 1', W - margin, 285, { align: 'right' })
 
   // ── Descarga ─────────────────────────────────────────────────────────────

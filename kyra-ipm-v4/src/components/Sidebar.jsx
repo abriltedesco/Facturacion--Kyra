@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const IconDashboard = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -62,6 +63,8 @@ const NAV = [
 ]
 
 export default function Sidebar() {
+  const { user, signOut } = useAuth()
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -85,6 +88,12 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-bottom">
+        <div className="sidebar-account" title={user?.displayName || user?.username}>
+          <span className="sidebar-account-avatar" aria-hidden="true">
+            {(user?.displayName || user?.username || 'K').charAt(0).toUpperCase()}
+          </span>
+          <span className="sidebar-account-name">{user?.displayName || user?.username}</span>
+        </div>
         <NavLink
           to="/configuracion"
           className={({ isActive }) =>
@@ -95,6 +104,12 @@ export default function Sidebar() {
           <IconSettings />
           Configuración
         </NavLink>
+        <button type="button" className="sidebar-nav-item sidebar-signout" onClick={() => signOut().catch(() => {})}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+          </svg>
+          Cerrar sesión
+        </button>
       </div>
     </aside>
   )

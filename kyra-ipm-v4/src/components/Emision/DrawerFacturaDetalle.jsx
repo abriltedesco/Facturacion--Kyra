@@ -5,6 +5,7 @@ import EstadoEmision from './EstadoEmision'
 import BadgeTipoFactura from './BadgeTipoFactura'
 import { generarPDFllc }  from '../../utils/generarPDFllc'
 import { generarPDFafip } from '../../utils/generarPDFafip'
+import { getEmissionWarnings } from '../../domain/emissionWarnings'
 
 const MESES = {
   enero:'Enero', febrero:'Febrero', marzo:'Marzo', abril:'Abril',
@@ -57,10 +58,11 @@ export default function DrawerFacturaDetalle({ linea, cliente, servicio, entidad
   const moneda = linea.moneda || 'ARS'
   const esLLC  = linea.tipoFactura === 'LLC'
   const emitida = linea.status === 'emitida'
+  const warnings = getEmissionWarnings({ entity: entidad, voucherType: linea.tipoFactura, currency: moneda })
 
   function handleDescargarPDF() {
     if (esLLC) {
-      generarPDFllc({ linea, cliente, servicio, nroInvoice: linea.nroFactura })
+      generarPDFllc({ linea, cliente, servicio, entidad, nroInvoice: linea.nroFactura })
     } else {
       generarPDFafip({ linea, cliente, servicio, entidad })
     }
@@ -116,6 +118,20 @@ export default function DrawerFacturaDetalle({ linea, cliente, servicio, entidad
 
         {/* Body */}
         <div style={{ padding:'0 24px 24px', flex:1 }}>
+
+          {warnings.length > 0 && (
+            <div className="emission-warning-panel" role="status">
+              <div className="emission-warning-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Revisar antes de emitir
+              </div>
+              <ul>{warnings.map(warning => <li key={warning.code}>{warning.message}</li>)}</ul>
+              <p>Estas advertencias no bloquean la emisión.</p>
+            </div>
+          )}
 
           {/* Número de factura + botón PDF (si emitida) */}
           {linea.nroFactura && emitida && (
@@ -182,7 +198,7 @@ export default function DrawerFacturaDetalle({ linea, cliente, servicio, entidad
             letterSpacing:'0.06em', color:'var(--text-muted, #6b7280)' }}>
             ENTIDAD EMISORA
           </div>
-          <Row label="Entidad"       value={entidad?.nombre || `Entidad ${linea.entidadId}`} />
+          <Row label="Entidad"       value={entidad?.name || `Entidad ${linea.entidadId}`} />
           <Row label="Tipo factura"  value={`Factura ${linea.tipoFactura}`} />
           <Row label="Moneda"        value={moneda} />
 

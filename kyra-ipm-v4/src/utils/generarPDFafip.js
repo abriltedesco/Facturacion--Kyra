@@ -4,11 +4,6 @@
 
 import { jsPDF } from 'jspdf'
 
-const ENTIDADES = {
-  1: { nombre: 'Kyra SRL', cuit: '30-71234567-8', iibb: '123-456789-0', domicilio: 'Av. Corrientes 1234, CABA' },
-  2: { nombre: 'Kyra Monotributo', cuit: '27-12345678-9', iibb: 'Monotributista', domicilio: 'Av. Corrientes 1234, CABA' },
-}
-
 const MESES_ES = {
   enero:'Enero', febrero:'Febrero', marzo:'Marzo', abril:'Abril',
   mayo:'Mayo', junio:'Junio', julio:'Julio', agosto:'Agosto',
@@ -31,11 +26,19 @@ function fmtFecha(iso) {
  * @returns {string} dataUri del PDF
  */
 export function generarPDFafip({ linea, cliente, servicio, entidad }) {
+  if (!entidad || entidad.legalType === 'llc') {
+    throw new Error('Se necesita una entidad argentina válida para generar el comprobante.')
+  }
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const margin = 16
 
-  const emisor = ENTIDADES[linea.entidadId] || { nombre: entidad?.nombre || 'Kyra', cuit: '—' }
+  const emisor = {
+    nombre: entidad.name,
+    cuit: entidad.fiscalId,
+    iibb: entidad.grossIncomeNumber || '—',
+    domicilio: entidad.fiscalAddress,
+  }
   const tipo   = linea.tipoFactura
   const nro    = linea.nroFactura || '—'
 
@@ -59,9 +62,9 @@ export function generarPDFafip({ linea, cliente, servicio, entidad }) {
   doc.text(emisor.nombre.toUpperCase(), margin + 4, 21)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  doc.text(emisor.domicilio, margin + 4, 27)
-  doc.text(`CUIT: ${emisor.cuit}`, margin + 4, 32)
-  doc.text(`IIBB: ${emisor.iibb || '—'}`, margin + 4, 37)
+  doc.text(doc.splitTextToSize(emisor.domicilio, 47).slice(0, 2), margin + 4, 27)
+  doc.text(`CUIT: ${emisor.cuit}`, margin + 4, 35)
+  doc.text(`IIBB: ${emisor.iibb}`, margin + 4, 40)
 
   // Letra al centro
   doc.setFillColor(...azul)

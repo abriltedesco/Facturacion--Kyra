@@ -5,10 +5,10 @@
 
 import { useState, useRef } from 'react'
 import { useFacturacion } from '../context/FacturacionContext'
+import { useEntities } from '../context/EntitiesContext'
 
 import { CLIENTES_INICIAL } from '../data/clientes'
 import { SERVICIOS_INICIAL } from '../data/servicios'
-import { ENTIDADES_INICIAL } from '../data/entidades'
 import {
   CONTADORES_INICIAL,
   claveContador,
@@ -53,6 +53,7 @@ const FILTROS = [
 
 export default function EmisionPage() {
   const { lineas, setLineas } = useFacturacion()
+  const { entities, activeEntities } = useEntities()
   const contadoresRef                     = useRef({ ...CONTADORES_INICIAL })
   const historialEmailRef                 = useRef([])        // local historial de emails de esta sesión
   const [emitirTodoActivo, setEmitirTodoActivo] = useState(false)
@@ -65,16 +66,23 @@ export default function EmisionPage() {
 
   function getCliente(id)  { return CLIENTES_INICIAL.find(c => c.id === id) }
   function getServicio(id) { return SERVICIOS_INICIAL.find(s => s.id === id) }
-  function getEntidad(id)  { return ENTIDADES_INICIAL.find(e => e.id === id) }
+  function getEntidad(id)  { return entities.find(entity => String(entity.id) === String(id)) }
 
   function setLineaStatus(id, patch) {
     setLineas(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l))
   }
 
-  function siguienteNro(tipoFactura, entidadId) {
-    const clave = claveContador(tipoFactura, entidadId)
-    contadoresRef.current[clave] += 1
-    return generarNroFactura(contadoresRef.current[clave], tipoFactura, entidadId)
+  function siguienteNro(linea) {
+    const entidad = getEntidad(linea.entidadId)
+    const clave = claveContador(linea.tipoFactura, entidad || linea.entidadId)
+    contadoresRef.current[clave] = (contadoresRef.current[clave] || 0) + 1
+    return generarNroFactura(contadoresRef.current[clave], linea.tipoFactura, entidad || linea.entidadId, linea.anio)
+  }
+
+  function revertirNro(linea) {
+    const entidad = getEntidad(linea.entidadId)
+    const clave = claveContador(linea.tipoFactura, entidad || linea.entidadId)
+    contadoresRef.current[clave] = Math.max(0, (contadoresRef.current[clave] || 1) - 1)
   }
 
   // ── Auto-envío de email tras emisión exitosa ───────────────────────────────
@@ -133,7 +141,7 @@ export default function EmisionPage() {
   // ── emisión individual ─────────────────────────────────────────────────────
 
   async function emitirLinea(linea) {
-    const nro = siguienteNro(linea.tipoFactura, linea.entidadId)
+    const nro = siguienteNro(linea)
 
     setLineaStatus(linea.id, { status: 'emitiendo', nroFactura: null })
 
@@ -141,7 +149,8 @@ export default function EmisionPage() {
       if (linea.tipoFactura === 'LLC') {
         const cliente  = getCliente(linea.clienteId)
         const servicio = getServicio(linea.servicioId)
-        const pdfUri   = generarPDFllc({ linea, cliente, servicio, nroInvoice: nro })
+        const entidad  = getEntidad(linea.entidadId)
+        const pdfUri   = generarPDFllc({ linea, cliente, servicio, entidad, nroInvoice: nro })
 
         const hoy = new Date()
         const fechaEmision = hoy.toISOString().split('T')[0]
@@ -183,8 +192,7 @@ export default function EmisionPage() {
           setLineaStatus(linea.id, lineaEmitida)
           intentarEnvioEmail(lineaEmitida)
         } else {
-          const clave = claveContador(linea.tipoFactura, linea.entidadId)
-          contadoresRef.current[clave] -= 1
+          revertirNro(linea)
           setLineaStatus(linea.id, {
             status:       'error_emision',
             errorCodigo:  resultado.codigo,
@@ -193,8 +201,7 @@ export default function EmisionPage() {
         }
       }
     } catch (err) {
-      const clave = claveContador(linea.tipoFactura, linea.entidadId)
-      contadoresRef.current[clave] -= 1
+      revertirNro(linea)
       setLineaStatus(linea.id, {
         status:       'error_emision',
         errorCodigo:  'JS-ERROR',
@@ -216,14 +223,15 @@ export default function EmisionPage() {
     let errores  = 0
 
     for (const linea of candidatas) {
-      const nro = siguienteNro(linea.tipoFactura, linea.entidadId)
+      const nro = siguienteNro(linea)
       setLineaStatus(linea.id, { status: 'emitiendo', nroFactura: null })
 
       try {
         if (linea.tipoFactura === 'LLC') {
           const cliente  = getCliente(linea.clienteId)
           const servicio = getServicio(linea.servicioId)
-          const pdfUri   = generarPDFllc({ linea, cliente, servicio, nroInvoice: nro })
+          const entidad  = getEntidad(linea.entidadId)
+          const pdfUri   = generarPDFllc({ linea, cliente, servicio, entidad, nroInvoice: nro })
 
           const hoy = new Date()
           const fechaEmision = hoy.toISOString().split('T')[0]
@@ -265,8 +273,7 @@ export default function EmisionPage() {
             intentarEnvioEmail(lineaEmitida)
             emitidas++
           } else {
-            const clave = claveContador(linea.tipoFactura, linea.entidadId)
-            contadoresRef.current[clave] -= 1
+            revertirNro(linea)
             setLineaStatus(linea.id, {
               status:'error_emision',
               errorCodigo:resultado.codigo, errorMensaje:resultado.mensaje,
@@ -275,8 +282,7 @@ export default function EmisionPage() {
           }
         }
       } catch (err) {
-        const clave = claveContador(linea.tipoFactura, linea.entidadId)
-        contadoresRef.current[clave] -= 1
+        revertirNro(linea)
         setLineaStatus(linea.id, {
           status:'error_emision',
           errorCodigo:'JS-ERROR', errorMensaje:err?.message || 'Error inesperado.',
@@ -473,7 +479,7 @@ export default function EmisionPage() {
           lineas={lineasFiltradas}
           clientes={CLIENTES_INICIAL}
           servicios={SERVICIOS_INICIAL}
-          entidades={ENTIDADES_INICIAL}
+          entidades={entities}
           onEmitir={emitirLinea}
           onReintentar={handleReintentar}
           onVerDetalle={setDrawerLinea}
@@ -496,7 +502,7 @@ export default function EmisionPage() {
         <ModalNuevaFactura
           clientes={CLIENTES_INICIAL}
           servicios={SERVICIOS_INICIAL}
-          entidades={ENTIDADES_INICIAL}
+          entidades={activeEntities}
           onGuardar={handleNuevaFactura}
           onClose={() => setShowNueva(false)}
         />

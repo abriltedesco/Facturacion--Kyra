@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Modal from '../components/Modal'
-import { ENTIDADES_INICIAL } from '../data/entidades'
+import EntityFormModal from '../components/Entidades/EntityFormModal'
+import { useEntities } from '../context/EntitiesContext'
+import { getArcaStatus } from '../domain/arca'
 import { CLIENTES_INICIAL } from '../data/clientes'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
@@ -28,17 +30,21 @@ const LABEL_ID_FISCAL = {
 
 /**
  * Tipos de factura disponibles según el tipo de entidad emisora.
- * Clave = tipo de entidad (campo `tipo` en ENTIDADES_INICIAL).
+ * Clave = `legalType` normalizado por el repositorio de entidades.
  */
 const TIPOS_FACTURA_BY_ENTIDAD_TIPO = {
-  SRL:            ['A', 'B (Exento IVA)'],
-  Monotributista: ['C'],
-  LLC:            ['Invoice LLC'],
+  srl:            ['A', 'B (Exento IVA)'],
+  monotributista: ['C'],
+  llc:            ['Invoice LLC'],
 }
 
 /** Normaliza el tipo de comprobante de entidad al código corto que usa el cliente */
 function comprobanteToTipo(comprobante) {
   if (!comprobante) return ''
+  if (comprobante === 'A') return 'A'
+  if (comprobante === 'B_EXEMPT') return 'B (Exento IVA)'
+  if (comprobante === 'C') return 'C'
+  if (comprobante === 'LLC') return 'Invoice LLC'
   if (comprobante.startsWith('Factura A')) return 'A'
   if (comprobante.startsWith('Factura B')) return 'B (Exento IVA)'
   if (comprobante.startsWith('Factura C')) return 'C'
@@ -57,75 +63,32 @@ const PROVEEDORES_DATA = Array.from({ length: 10 }, (_, i) => ({
   cuit: '30-' + String(61234567 + i * 1234567) + '-8',
 }))
 
-// Entidades reales importadas desde /data/entidades.js
-// (el array original se usa como estado inicial en useState)
-
 // ── Helpers para Entidades ───────────────────────────────────────────────────
 
-const TIPOS_ENTIDAD = ['SRL', 'Monotributista', 'LLC']
-const TIPOS_COMPROBANTE = ['Factura A', 'Factura B (Exento IVA)', 'Factura C', 'Invoice LLC']
-const COMPROBANTE_DEFAULT_BY_TIPO = {
-  SRL: 'Factura A',
-  Monotributista: 'Factura C',
+const ENTITY_TYPE_LABEL = {
+  srl: 'SRL',
+  monotributista: 'Monotributo personal',
+  llc: 'LLC',
+}
+
+const ENTITY_VOUCHER_LABEL = {
+  A: 'Factura A',
+  B_EXEMPT: 'Factura B - Exento en IVA',
+  C: 'Factura C',
   LLC: 'Invoice LLC',
 }
 
-/** Entidades argentinas: ARCA aplica solo para SRL y Monotributistas */
-const esArgentina = (tipo) => ['SRL', 'Monotributista'].includes(tipo)
-
-/**
- * Retorna el estado del certificado ARCA.
- * @param {object|null} arca  — { archivoSubido, vencimiento: 'YYYY-MM-DD' } | null
- * @returns {'vigente'|'por-vencer'|'vencido'|'no-cargado'|'no-aplica'}
- */
-function arcaStatus(arca) {
-  if (!arca) return 'no-aplica'
-  if (!arca.archivoSubido) return 'no-cargado'
-  const hoy = new Date()
-  hoy.setHours(0, 0, 0, 0)
-  const vence = new Date(arca.vencimiento + 'T00:00:00')
-  const diffMs = vence - hoy
-  const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-  if (diffDias < 0) return 'vencido'
-  if (diffDias <= 30) return 'por-vencer'
-  return 'vigente'
+const ENTITY_ARCA_LABEL = {
+  valid: 'Vigente',
+  expiring: 'Por vencer',
+  expired: 'Vencido',
+  missing: 'Sin cargar',
+  not_applicable: 'No aplica',
 }
 
-const ARCA_LABEL = {
-  vigente:    'Vigente',
-  'por-vencer': 'Por vencer',
-  vencido:    'Vencido',
-  'no-cargado': 'Sin cargar',
-  'no-aplica':  '—',
-}
-const ARCA_COLOR = {
-  vigente:    '#1a9e5c',
-  'por-vencer': '#d97706',
-  vencido:    '#dc2626',
-  'no-cargado': '#9ca3af',
-  'no-aplica':  '#d1d5db',
-}
-const ARCA_BG = {
-  vigente:    '#d1fae5',
-  'por-vencer': '#fef3c7',
-  vencido:    '#fee2e2',
-  'no-cargado': '#f3f4f6',
-  'no-aplica':  '#f3f4f6',
-}
-
-function ArcaBadge({ arca }) {
-  const st = arcaStatus(arca)
-  if (st === 'no-aplica') return <span className="td-muted">—</span>
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
-      color: ARCA_COLOR[st], background: ARCA_BG[st],
-    }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ARCA_COLOR[st], display: 'inline-block' }} />
-      {ARCA_LABEL[st]}
-    </span>
-  )
+function EntityArcaBadge({ entity }) {
+  const status = getArcaStatus(entity)
+  return <span className={`entity-arca-badge entity-arca-${status}`}>{ENTITY_ARCA_LABEL[status]}</span>
 }
 
 const SERVICIOS_DATA = [
@@ -198,7 +161,6 @@ const EMPTY_CLIENTE = {
   actualizacionIPC: false, carpetaDrive: '', contacto: '', notas: '',
 }
 const EMPTY_PROVEEDOR = { nombre: '', email: '', tipoServicio: '', metodoPago: '', destino: '', cuit: '' }
-const EMPTY_ENTIDAD   = { nombre: '', tipo: '', identificacion: '', comprobanteDefault: '' }
 const EMPTY_SERVICIO  = { nombre: '', tipoSvc: 'Fijo', precioBase: '', moneda: 'ARS', estadoInicial: true }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -257,53 +219,32 @@ const SVG_IMPORT = (
 
 export default function Administracion() {
   const navigate = useNavigate()
+  const {
+    entities: managedEntities,
+    loading: entitiesLoading,
+    error: entitiesError,
+    saveEntity,
+    setEntityStatus,
+  } = useEntities()
   const [tab, setTab] = useState(0)
   const [clientes, setClientes] = useState(CLIENTES_INICIAL)
   const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
-  const [entidades, setEntidades] = useState(ENTIDADES_INICIAL)
   const [servicios, setServicios] = useState(SERVICIOS_DATA)
   const [editingServicio, setEditingServicio] = useState(null)
+  const [editingManagedEntity, setEditingManagedEntity] = useState(null)
+  const [deactivationTarget, setDeactivationTarget] = useState(null)
+  const [changingEntityStatus, setChangingEntityStatus] = useState(false)
 
-  const [openModal, setOpenModal] = useState(null) // 'cliente'|'proveedor'|'entidad'|'servicio'|null
+  const [openModal, setOpenModal] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [formC, setFormC] = useState(EMPTY_CLIENTE)
   const [formP, setFormP] = useState(EMPTY_PROVEEDOR)
-  const [formE, setFormE] = useState(EMPTY_ENTIDAD)
   const [formS, setFormS] = useState(EMPTY_SERVICIO)
   const [submitted, setSubmitted] = useState(false)
 
   // Estado extra para el modal de Clientes
   const [editingCliente, setEditingCliente] = useState(null) // null = crear, objeto = editar
 
-  // Estado extra para el modal de Entidades
-  const [editingEntidad, setEditingEntidad] = useState(null) // null = crear, objeto = editar
-  const [cuentasList, setCuentasList] = useState([{ banco: '', moneda: 'ARS' }])
-  const [arcaArchivo, setArcaArchivo] = useState(false)
-  const [arcaFileName, setArcaFileName] = useState('')
-  const [arcaBlobUrl, setArcaBlobUrl] = useState('')
-  const [arcaDriveUrl, setArcaDriveUrl] = useState('')
-  const [arcaDragOver, setArcaDragOver] = useState(false)
-  const [arcaCopied, setArcaCopied] = useState(false)
-  const [arcaShared, setArcaShared] = useState(false)
-  const [arcaVencimiento, setArcaVencimiento] = useState('')
-  const arcaInputRef = useRef(null)
-
-  function arcaCargarArchivo(file) {
-    if (!file) return
-    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
-    const url = URL.createObjectURL(file)
-    setArcaArchivo(true)
-    setArcaFileName(file.name)
-    setArcaBlobUrl(url)
-  }
-
-  function arcaQuitarArchivo() {
-    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
-    setArcaArchivo(false)
-    setArcaFileName('')
-    setArcaBlobUrl('')
-    setArcaVencimiento('')
-  }
   const [ccList, setCcList] = useState([])
   const [ccInput, setCcInput] = useState('')
   const [rowMenuOpen, setRowMenuOpen] = useState(null)
@@ -378,36 +319,38 @@ export default function Administracion() {
     setOpenModal('cliente')
   }
 
-  function handleToggleEntidad(id) {
-    setEntidades(prev => prev.map(e =>
-      e.id === id ? { ...e, estado: e.estado === 'Activa' ? 'Inactiva' : 'Activa' } : e
-    ))
-    setRowMenuOpen(null)
+  function openManagedEntityForm(entity = null) {
+    setEditingManagedEntity(entity)
+    setOpenModal('managed-entity')
   }
 
-  function openEditEntidad(entidad) {
-    setEditingEntidad(entidad)
-    setFormE({ nombre: entidad.nombre, tipo: entidad.tipo, identificacion: entidad.identificacion, comprobanteDefault: entidad.comprobanteDefault })
-    setCuentasList(entidad.cuentas.length > 0 ? entidad.cuentas.map(c => ({ ...c })) : [{ banco: '', moneda: 'ARS' }])
-    setArcaArchivo(entidad.arca?.archivoSubido ?? false)
-    setArcaFileName(entidad.arca?.fileName ?? '')
-    setArcaDriveUrl(entidad.arca?.driveUrl ?? '')
-    setArcaVencimiento(entidad.arca?.vencimiento ?? '')
-    setSubmitted(false)
-    setOpenModal('entidad')
+  async function changeManagedEntityStatus(entity, nextStatus) {
+    setChangingEntityStatus(true)
+    try {
+      await setEntityStatus(entity, nextStatus)
+      setDeactivationTarget(null)
+      setRowMenuOpen(null)
+    } finally {
+      setChangingEntityStatus(false)
+    }
   }
 
-  const currentData = [clientes, proveedores, entidades, servicios][tab]
+  const currentData = [clientes, proveedores, managedEntities, servicios][tab]
 
   const filtered = currentData.filter(r => {
     const q = search.toLowerCase()
-    const cuentasStr = Array.isArray(r.cuentas) ? r.cuentas.map(c => c.banco).join(' ') : (r.cuentaBancaria || '')
+    const rowName = r.name || r.nombre || ''
+    const rowEmail = r.billingEmail || r.mail || r.email || ''
+    const rowFiscalId = r.fiscalId || r.identificacionFiscal || r.identificacion || ''
+    const accounts = r.bankAccounts || r.cuentas
+    const cuentasStr = Array.isArray(accounts) ? accounts.map(c => c.bankName || c.banco || '').join(' ') : (r.cuentaBancaria || '')
     const matchSearch = !q
-      || r.nombre.toLowerCase().includes(q)
-      || (r.mail || r.email || '').toLowerCase().includes(q)
-      || (r.identificacionFiscal || r.identificacion || '').toLowerCase().includes(q)
+      || rowName.toLowerCase().includes(q)
+      || rowEmail.toLowerCase().includes(q)
+      || rowFiscalId.toLowerCase().includes(q)
       || cuentasStr.toLowerCase().includes(q)
-    const matchEstado = !filtroEstado || String(r.estado).toUpperCase() === filtroEstado.toUpperCase()
+    const status = r.status === 'active' ? 'Activa' : r.status === 'inactive' ? 'Inactiva' : r.estado
+    const matchEstado = !filtroEstado || String(status).toUpperCase() === filtroEstado.toUpperCase()
     return matchSearch && matchEstado
   })
 
@@ -424,27 +367,14 @@ export default function Administracion() {
   // Guardar handlers
   const chC = e => setFormC(p => ({ ...p, [e.target.name]: e.target.value }))
   const chP = e => setFormP(p => ({ ...p, [e.target.name]: e.target.value }))
-  const chE = e => setFormE(p => ({ ...p, [e.target.name]: e.target.value }))
   const chS = e => setFormS(p => ({ ...p, [e.target.name]: e.target.value }))
-
-  // Al cambiar tipo de entidad, pre-seleccionar comprobante por defecto
-  const chETipo = e => {
-    const tipo = e.target.value
-    setFormE(p => ({ ...p, tipo, comprobanteDefault: COMPROBANTE_DEFAULT_BY_TIPO[tipo] || '' }))
-    if (!esArgentina(tipo)) { setArcaArchivo(false); setArcaVencimiento('') }
-  }
-
-  // Handlers para cuentas bancarias dinámicas
-  const addCuenta = () => setCuentasList(prev => [...prev, { banco: '', moneda: 'ARS' }])
-  const removeCuenta = idx => setCuentasList(prev => prev.filter((_, i) => i !== idx))
-  const chCuenta = (idx, field, val) => setCuentasList(prev => prev.map((c, i) => i === idx ? { ...c, [field]: val } : c))
 
   // Entidad emisora condiciona el tipo de factura por defecto
   const chEntidadCliente = e => {
     const id = e.target.value
-    const ent = entidades.find(en => String(en.id) === id)
-    const tiposDisponibles = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.tipo] || []) : []
-    const defecto = ent ? comprobanteToTipo(ent.comprobanteDefault) : ''
+    const ent = managedEntities.find(en => String(en.id) === id)
+    const tiposDisponibles = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.legalType] || []) : []
+    const defecto = ent ? comprobanteToTipo(ent.defaultVoucher) : ''
     setFormC(p => ({
       ...p,
       entidadEmisoraId: id,
@@ -467,7 +397,6 @@ export default function Administracion() {
 
   const isReadyC = formC.nombre && formC.entidadEmisoraId && formC.tipoFactura && formC.pais && formC.impuestoAdicional !== ''
   const isReadyP = formP.nombre && formP.email && formP.destino
-  const isReadyE = formE.nombre && formE.tipo && cuentasList.some(c => c.banco.trim())
   const isReadyS = formS.nombre && formS.tipoSvc
 
   const guardarC = () => {
@@ -510,51 +439,6 @@ export default function Administracion() {
     if (!isReadyP) return
     setProveedores(p => [{ id: Date.now(), nombre: formP.nombre, estado: 'PENDIENTE', mail: formP.email, tipoServicio: formP.tipoServicio, medioPago: formP.metodoPago, destino: formP.destino, cuit: formP.cuit }, ...p])
     setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setOpenModal(null); setTab(1)
-  }
-  const guardarE = () => {
-    setSubmitted(true)
-    if (!isReadyE) return
-    const cuentasLimpias = cuentasList.filter(c => c.banco.trim())
-    const arcaData = esArgentina(formE.tipo)
-      ? { archivoSubido: arcaArchivo, fileName: arcaFileName, driveUrl: arcaDriveUrl, vencimiento: arcaVencimiento }
-      : null
-
-    if (editingEntidad) {
-      // Modo edición
-      setEntidades(prev => prev.map(e =>
-        e.id === editingEntidad.id
-          ? { ...e, nombre: formE.nombre, tipo: formE.tipo, identificacion: formE.identificacion,
-              comprobanteDefault: formE.comprobanteDefault || COMPROBANTE_DEFAULT_BY_TIPO[formE.tipo] || '',
-              cuentas: cuentasLimpias, arca: arcaData }
-          : e
-      ))
-    } else {
-      // Modo creación
-      setEntidades(prev => [{
-        id: Date.now(),
-        nombre: formE.nombre,
-        estado: 'Activa',
-        tipo: formE.tipo,
-        identificacion: formE.identificacion,
-        tipoIdentificacion: formE.tipo === 'LLC' ? 'EIN' : 'CUIT',
-        comprobanteDefault: formE.comprobanteDefault || COMPROBANTE_DEFAULT_BY_TIPO[formE.tipo] || '',
-        cuentas: cuentasLimpias,
-        arca: arcaData,
-      }, ...prev])
-    }
-
-    setFormE(EMPTY_ENTIDAD)
-    setCuentasList([{ banco: '', moneda: 'ARS' }])
-    if (arcaBlobUrl) URL.revokeObjectURL(arcaBlobUrl)
-    setArcaArchivo(false)
-    setArcaFileName('')
-    setArcaBlobUrl('')
-    setArcaDriveUrl('')
-    setArcaVencimiento('')
-    setEditingEntidad(null)
-    setSubmitted(false)
-    setOpenModal(null)
-    setTab(2)
   }
   function handleToggleServicio(id) {
     setServicios(prev => prev.map(s =>
@@ -611,11 +495,7 @@ export default function Administracion() {
     setOpenModal(null)
     setSubmitted(false)
     setEditingCliente(null)
-    setEditingEntidad(null)
     setEditingServicio(null)
-    setCuentasList([{ banco: '', moneda: 'ARS' }])
-    setArcaArchivo(false)
-    setArcaVencimiento('')
     setCcList([])
     setCcInput('')
   }
@@ -637,9 +517,9 @@ export default function Administracion() {
           {pageRows.length === 0
             ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
             : pageRows.map(r => {
-                const entidad = entidades.find(e => e.id === r.entidadEmisoraId)
+                const entidad = managedEntities.find(e => String(e.id) === String(r.entidadEmisoraId))
                 const tipoLabel = r.tipoFactura
-                  ? (r.tipoFactura + (entidad ? ' — ' + entidad.nombre : ''))
+                  ? (r.tipoFactura + (entidad ? ' — ' + entidad.name : ''))
                   : '—'
                 return (
                   <tr key={r.id} className="tr-clickable" onClick={() => openEditCliente(r)}>
@@ -755,39 +635,42 @@ export default function Administracion() {
         </tr></thead>
         <tbody>
           {pageRows.length === 0
-            ? <tr><td colSpan={8} className="td-empty">Sin resultados</td></tr>
+            ? <tr><td colSpan={8} className="td-empty">{entitiesLoading ? 'Cargando entidades…' : 'Sin resultados'}</td></tr>
             : pageRows.map(r => (
-              <tr key={r.id} className="tr-clickable" onClick={() => openEditEntidad(r)}>
-                <td><span className="link-nro">{r.nombre}</span></td>
-                <td><Badge estado={r.estado} /></td>
-                <td className="td-muted">{r.tipo}</td>
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/entidades/${r.id}`)}>
+                <td><span className="link-nro">{r.name}</span></td>
+                <td><Badge estado={r.status === 'active' ? 'Activa' : 'Inactiva'} /></td>
+                <td className="td-muted">{ENTITY_TYPE_LABEL[r.legalType]}</td>
                 <td className="td-muted">
-                  {r.cuentas && r.cuentas.length > 0
-                    ? r.cuentas.map((c, i) => (
-                        <span key={i} style={{ display: 'block', lineHeight: 1.4 }}>
-                          {c.banco} <span style={{ fontSize: 10, opacity: 0.65 }}>({c.moneda})</span>
+                  {r.bankAccounts.length > 0
+                    ? r.bankAccounts.map(account => (
+                        <span key={account.id} style={{ display: 'block', lineHeight: 1.4 }}>
+                          {account.bankName} <span style={{ fontSize: 10, opacity: 0.65 }}>({account.currency})</span>
                         </span>
                       ))
                     : '—'
                   }
                 </td>
-                <td className="td-muted">{r.comprobanteDefault || '—'}</td>
-                <td className="td-muted">{r.identificacion}</td>
-                <td><ArcaBadge arca={r.arca} /></td>
+                <td className="td-muted">{ENTITY_VOUCHER_LABEL[r.defaultVoucher] || '—'}</td>
+                <td className="td-muted">{r.fiscalId}</td>
+                <td><EntityArcaBadge entity={r} /></td>
                 <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
-                  <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                  <button className="dots-btn" aria-label={'Opciones '+r.name} aria-expanded={rowMenuOpen===r.id}
                     onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
                   {rowMenuOpen === r.id && (
                     <div className="row-menu" ref={rowMenuRef} role="menu">
-                      <button className="row-menu-item" role="menuitem" onClick={() => { openEditEntidad(r); setRowMenuOpen(null) }}>
+                      <button className="row-menu-item" role="menuitem" onClick={() => { openManagedEntityForm(r); setRowMenuOpen(null) }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                         Editar
                       </button>
-                      <button className="row-menu-item" role="menuitem" onClick={() => handleToggleEntidad(r.id)}>
-                        {r.estado === 'Activa'
+                      <button className="row-menu-item" role="menuitem" onClick={() => {
+                        if (r.status === 'active') setDeactivationTarget(r)
+                        else changeManagedEntityStatus(r, 'active').catch(() => {})
+                      }}>
+                        {r.status === 'active'
                           ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
                           : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
                         }
@@ -987,7 +870,7 @@ export default function Administracion() {
                 {[
                   { label: 'Nuevo cliente', action: () => { setTab(0); setOpenModal('cliente'); setFormC(EMPTY_CLIENTE); setEditingCliente(null); setCcList([]); setCcInput(''); setSubmitted(false); setShowDropdown(false) } },
                   { label: 'Nuevo proveedor', action: () => { setTab(1); setOpenModal('proveedor'); setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setShowDropdown(false) } },
-                  { label: 'Nueva entidad', action: () => { setTab(2); setOpenModal('entidad'); setFormE(EMPTY_ENTIDAD); setEditingEntidad(null); setCuentasList([{ banco: '', moneda: 'ARS' }]); setArcaArchivo(false); setArcaVencimiento(''); setSubmitted(false); setShowDropdown(false) } },
+                  { label: 'Nueva entidad', action: () => { setTab(2); openManagedEntityForm(); setShowDropdown(false) } },
                   { label: 'Nuevo servicio', action: () => { setTab(3); setOpenModal('servicio'); setFormS(EMPTY_SERVICIO); setSubmitted(false); setShowDropdown(false) } },
                 ].map(item => (
                   <button key={item.label} role="menuitem" className="nuevo-dropdown-item" onClick={item.action}>
@@ -1019,6 +902,7 @@ export default function Administracion() {
 
       {/* Table panel */}
       <div id="atab-panel" role="tabpanel" aria-labelledby={'atab-' + tab} className="table-container">
+        {tab === 2 && entitiesError && <div className="admin-data-error" role="alert">{entitiesError}</div>}
         {renderTable()}
         <Pagination page={page} totalPages={totalPages} onChange={p => setPage(p)} />
       </div>
@@ -1080,8 +964,8 @@ export default function Administracion() {
             value={formC.entidadEmisoraId} onChange={chEntidadCliente}
           >
             <option value=""></option>
-            {entidades.filter(e => e.estado === 'Activa').map(e => (
-              <option key={e.id} value={String(e.id)}>{e.nombre}</option>
+            {managedEntities.filter(e => e.status === 'active').map(e => (
+              <option key={e.id} value={String(e.id)}>{e.name}</option>
             ))}
           </select>
           {submitted && !formC.entidadEmisoraId && <span className="field-error">Campo obligatorio</span>}
@@ -1091,8 +975,8 @@ export default function Administracion() {
         <div className="form-group">
           <label htmlFor="c-tipo">Tipo de Factura <span className="label-req">*</span></label>
           {(() => {
-            const ent = entidades.find(e => String(e.id) === String(formC.entidadEmisoraId))
-            const tipos = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.tipo] || []) : []
+            const ent = managedEntities.find(e => String(e.id) === String(formC.entidadEmisoraId))
+            const tipos = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.legalType] || []) : []
             const bloqueado = tipos.length === 1
             return (
               <>
@@ -1254,251 +1138,34 @@ export default function Administracion() {
         </div>
       </Modal>
 
-      {/* NUEVA / EDITAR ENTIDAD modal */}
-      <Modal
-        isOpen={openModal === 'entidad'}
+      <EntityFormModal
+        isOpen={openModal === 'managed-entity'}
+        entity={editingManagedEntity}
         onClose={closeModal}
-        title={editingEntidad ? 'EDITAR ENTIDAD' : 'NUEVA ENTIDAD'}
+        onSave={saveEntity}
+        onSaved={() => { setOpenModal(null); setEditingManagedEntity(null); setTab(2) }}
         triggerRef={btnNuevoRef}
-        footer={footerFor(isReadyE, guardarE)}
-      >
-        {/* Nombre */}
-        <div className="form-group">
-          <label htmlFor="e-nombre">Nombre de Entidad <span className="label-req">*</span></label>
-          <input
-            id="e-nombre" className={'form-input' + (submitted && !formE.nombre ? ' input-error' : '')}
-            name="nombre" value={formE.nombre} onChange={chE}
-            placeholder="ej: Kyra SRL"
-          />
-          {submitted && !formE.nombre && <span className="field-error">Campo obligatorio</span>}
-        </div>
+      />
 
-        {/* Tipo */}
-        <div className="form-group">
-          <label htmlFor="e-tipo">Tipo de entidad <span className="label-req">*</span></label>
-          <select
-            id="e-tipo" className={'form-select' + (submitted && !formE.tipo ? ' input-error' : '')}
-            name="tipo" value={formE.tipo} onChange={chETipo}
-          >
-            <option value=""></option>
-            {TIPOS_ENTIDAD.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          {submitted && !formE.tipo && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* Identificación fiscal */}
-        <div className="form-group">
-          <label htmlFor="e-ident">
-            {formE.tipo === 'LLC' ? 'EIN' : 'CUIT'}
-            {!formE.tipo && ' / Identificación Fiscal'}
-          </label>
-          <input
-            id="e-ident" className="form-input"
-            name="identificacion" value={formE.identificacion} onChange={chE}
-            placeholder={formE.tipo === 'LLC' ? 'ej: 90-0388092-8' : 'ej: 30-70901901-1'}
-          />
-        </div>
-
-        {/* Tipo de comprobante por defecto */}
-        <div className="form-group">
-          <label htmlFor="e-compdef">Tipo de comprobante por defecto</label>
-          <select id="e-compdef" className="form-select" name="comprobanteDefault" value={formE.comprobanteDefault} onChange={chE}>
-            <option value=""></option>
-            {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          {formE.tipo && (
-            <span className="field-hint">
-              Valor sugerido para {formE.tipo}: <strong>{COMPROBANTE_DEFAULT_BY_TIPO[formE.tipo] || '—'}</strong>
-            </span>
-          )}
-        </div>
-
-        {/* Cuentas bancarias (dinámicas) */}
-        <div className="form-group">
-          <label>Cuentas bancarias <span className="label-req">*</span></label>
-          {cuentasList.map((cuenta, idx) => (
-            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-              <input
-                className={'form-input' + (submitted && idx === 0 && !cuenta.banco.trim() ? ' input-error' : '')}
-                placeholder="Nombre del banco"
-                value={cuenta.banco}
-                onChange={e => chCuenta(idx, 'banco', e.target.value)}
-                style={{ flex: 2 }}
-              />
-              <select
-                className="form-select"
-                value={cuenta.moneda}
-                onChange={e => chCuenta(idx, 'moneda', e.target.value)}
-                style={{ flex: 1, minWidth: 70 }}
-              >
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-              </select>
-              {cuentasList.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeCuenta(idx)}
-                  aria-label="Quitar cuenta"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-                >×</button>
-              )}
-            </div>
-          ))}
-          {submitted && !cuentasList.some(c => c.banco.trim()) && (
-            <span className="field-error">Agregá al menos una cuenta bancaria</span>
-          )}
-          <button type="button" className="btn-add-cc-form" onClick={addCuenta} style={{ marginTop: 4 }}>
-            + Agregar otra cuenta
-          </button>
-        </div>
-
-        {/* Certificado ARCA — solo para entidades argentinas */}
-        {esArgentina(formE.tipo) && (
-          <div className="form-group" style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <label style={{ fontWeight: 600, margin: 0 }}>Certificado ARCA</label>
-              {arcaArchivo && (
-                <ArcaBadge arca={{ archivoSubido: true, vencimiento: arcaVencimiento }} />
-              )}
-            </div>
-
-            {/* Área drag & drop */}
-            {!arcaArchivo ? (
-              <div
-                onDragOver={e => { e.preventDefault(); setArcaDragOver(true) }}
-                onDragLeave={() => setArcaDragOver(false)}
-                onDrop={e => {
-                  e.preventDefault()
-                  setArcaDragOver(false)
-                  arcaCargarArchivo(e.dataTransfer.files?.[0])
-                }}
-                onClick={() => arcaInputRef.current?.click()}
-                style={{
-                  border: `2px dashed ${arcaDragOver ? 'var(--color-cta,#111)' : '#d1d5db'}`,
-                  borderRadius: 8, padding: '20px 16px', textAlign: 'center',
-                  cursor: 'pointer', transition: 'border-color .15s',
-                  background: arcaDragOver ? 'rgba(0,0,0,.03)' : 'transparent',
-                }}
-              >
-                <div style={{ fontSize: 28, marginBottom: 6, opacity: .4 }}>📄</div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  Arrastrá el PDF aquí o <span style={{ textDecoration: 'underline' }}>seleccioná un archivo</span>
-                </div>
-                <div style={{ fontSize: 11, opacity: .5, marginTop: 4 }}>Solo PDF · Máx. 10 MB</div>
-                <input
-                  ref={arcaInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  style={{ display: 'none' }}
-                  onChange={e => arcaCargarArchivo(e.target.files?.[0])}
-                />
-              </div>
-            ) : (
-              /* Archivo cargado — vista de preview + acciones */
-              <div style={{ border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden' }}>
-                {/* Fila del archivo */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff' }}>
-                  <span style={{ fontSize: 20 }}>📄</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {arcaFileName || 'certificado-arca.pdf'}
-                    </div>
-                    <div style={{ fontSize: 11, opacity: .5 }}>PDF</div>
-                  </div>
-                  {arcaBlobUrl && (
-                    <button
-                      type="button"
-                      title="Descargar PDF"
-                      onClick={() => {
-                        const a = document.createElement('a')
-                        a.href = arcaBlobUrl
-                        a.download = arcaFileName || 'certificado-arca.pdf'
-                        a.click()
-                      }}
-                      style={{ border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500, padding: '4px 10px', whiteSpace: 'nowrap' }}
-                      aria-label="Descargar"
-                    >⬇ Descargar</button>
-                  )}
-                  {arcaBlobUrl && (
-                    <button
-                      type="button"
-                      title="Compartir — copia el link del PDF para abrirlo en el navegador"
-                      onClick={() => {
-                        navigator.clipboard?.writeText(arcaBlobUrl)
-                        setArcaShared(true)
-                        setTimeout(() => setArcaShared(false), 2000)
-                      }}
-                      style={{ border: '1px solid #d1d5db', borderRadius: 6, background: arcaShared ? '#f0fdf4' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '4px 10px', whiteSpace: 'nowrap', color: arcaShared ? '#16a34a' : 'inherit', transition: 'background .2s, color .2s' }}
-                      aria-label="Compartir"
-                    >{arcaShared ? '✓ Link copiado' : '↗ Compartir'}</button>
-                  )}
-                  <button
-                    type="button"
-                    title="Quitar archivo"
-                    onClick={arcaQuitarArchivo}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, padding: '4px 6px', opacity: .4, lineHeight: 1 }}
-                    aria-label="Quitar"
-                  >×</button>
-                </div>
-
-                {/* Link Drive */}
-                <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 14px', background: '#f8fafc' }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, opacity: .6, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 6 }}>
-                    Carpeta Drive (opcional)
-                  </label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      className="form-input"
-                      placeholder="https://drive.google.com/..."
-                      value={arcaDriveUrl}
-                      onChange={e => setArcaDriveUrl(e.target.value)}
-                      style={{ flex: 1, fontSize: 13 }}
-                    />
-                    {arcaDriveUrl && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(arcaDriveUrl)
-                          setArcaCopied(true)
-                          setTimeout(() => setArcaCopied(false), 1800)
-                        }}
-                        style={{ whiteSpace: 'nowrap', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '0 10px' }}
-                      >
-                        {arcaCopied ? '✓ Copiado' : 'Copiar link'}
-                      </button>
-                    )}
-                    {arcaDriveUrl && (
-                      <button
-                        type="button"
-                        onClick={() => window.open(arcaDriveUrl, '_blank')}
-                        style={{ whiteSpace: 'nowrap', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, padding: '0 10px' }}
-                        title="Abrir en Drive"
-                      >↗</button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Vencimiento */}
-                <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 14px', background: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label htmlFor="e-arca-venc" style={{ fontSize: 13, opacity: .6, whiteSpace: 'nowrap', margin: 0 }}>
-                    Vencimiento
-                  </label>
-                  <input
-                    id="e-arca-venc"
-                    type="date"
-                    className="form-input"
-                    value={arcaVencimiento}
-                    onChange={e => setArcaVencimiento(e.target.value)}
-                    style={{ maxWidth: 180 }}
-                  />
-                  {arcaVencimiento && (
-                    <ArcaBadge arca={{ archivoSubido: true, vencimiento: arcaVencimiento }} />
-                  )}
-                </div>
-              </div>
-            )}
+      <Modal
+        isOpen={Boolean(deactivationTarget)}
+        onClose={changingEntityStatus ? () => {} : () => setDeactivationTarget(null)}
+        title="DESACTIVAR ENTIDAD"
+        dialogRole="alertdialog"
+        descriptionId="deactivate-entity-description"
+        footer={(
+          <div className="entity-confirm-actions">
+            <button type="button" className="btn-arca-secondary" onClick={() => setDeactivationTarget(null)} disabled={changingEntityStatus}>Cancelar</button>
+            <button type="button" className="btn-guardar ready" disabled={changingEntityStatus}
+              onClick={() => changeManagedEntityStatus(deactivationTarget, 'inactive').catch(() => {})}>
+              {changingEntityStatus ? 'Desactivando…' : 'Desactivar'}
+            </button>
           </div>
         )}
+      >
+        <p id="deactivate-entity-description" className="entity-confirm-copy">
+          <strong>{deactivationTarget?.name}</strong> dejará de estar disponible para nuevas facturas. Su historial se conservará.
+        </p>
       </Modal>
 
       {/* NUEVO SERVICIO modal — catálogo global (T13) */}

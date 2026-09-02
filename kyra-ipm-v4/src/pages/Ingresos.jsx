@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import Modal from '../components/Modal'
+import { useEntities } from '../context/EntitiesContext'
 
 const PAGE_SIZE = 9
 const ESTADOS = ['PENDIENTE', 'APROBADA', 'EMITIDA', 'ERROR']
 const CLIENTES = ['Maped', 'Edding ARG', 'Edding COL', 'Ayax', 'TechCorp', 'ALAIAB', 'Suprasafe', 'Kretz', 'Fate']
 const SERVICIOS = ['Social Media', 'Diseño UX/UI', 'Consultoría', 'Branding', 'SEO']
 const TIPOS = ['A', 'B', 'C', 'LLC']
-const ENTIDADES = ['Kyra SRL', 'Monotributo Personal Mai', 'Mercury LLC']
+const HISTORICAL_ENTITY_NAMES = ['Kyra SRL', 'Monotributo Personal Mai', 'Mercury LLC']
 
 const INITIAL_DATA = Array.from({ length: 60 }, (_, i) => ({
   id: i + 1,
@@ -17,7 +18,7 @@ const INITIAL_DATA = Array.from({ length: 60 }, (_, i) => ({
   importe: '$' + ((i % 5 + 1) * 50000).toLocaleString('es-AR') + ',00',
   total: '$' + ((i % 5 + 1) * 62400).toLocaleString('es-AR') + ',00',
   tipo: TIPOS[i % TIPOS.length],
-  entidad: ENTIDADES[i % ENTIDADES.length],
+  entidad: HISTORICAL_ENTITY_NAMES[i % HISTORICAL_ENTITY_NAMES.length],
   fecha: '27/05/2026',
   errorCode: i === 5 ? 'ERR_RECEPTOR_DATA' : null,
   errorMsg: i === 5 ? 'Los datos del receptor no coinciden con los registros fiscales vigentes.' : null,
@@ -44,7 +45,7 @@ const ERROR_MAP = {
 }
 
 const TABS = ['Pendientes', 'Historial', 'Control de Pagos']
-const EMPTY_FAC = { cliente: '', servicio: '', importe: '', tipo: '', fecha: '' }
+const EMPTY_FAC = { cliente: '', servicio: '', entidadId: '', importe: '', tipo: '', fecha: '' }
 const EMPTY_PAGO = { fecha: '', monto: '', medio: '', banco: '', retenciones: '', notas: '' }
 
 /* ── Badge ─────────────────────────────────────────────────────────────── */
@@ -108,6 +109,7 @@ const IcoChevron = ({ open }) => <svg width="12" height="12" viewBox="0 0 24 24"
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 export default function Ingresos() {
+  const { entities, activeEntities } = useEntities()
   /* facturas */
   const [data, setData]             = useState(INITIAL_DATA)
   const [tabIdx, setTabIdx]         = useState(0)
@@ -133,6 +135,12 @@ export default function Ingresos() {
   const [pagoModal, setPagoModal]   = useState(null)          /* row seleccionado para registrar pago */
   const [formPago, setFormPago]     = useState(EMPTY_PAGO)
   const [montoLive, setMontoLive]   = useState(0)
+
+  const entityFilterOptions = Array.from(new Set([
+    ...entities.map(entity => entity.name),
+    ...data.map(invoice => invoice.entidad),
+  ])).filter(Boolean)
+  const selectedEntity = activeEntities.find(entity => String(entity.id) === String(form.entidadId))
 
   useEffect(() => { document.title = 'Ingresos — IPM Kyra' }, [])
 
@@ -177,11 +185,11 @@ export default function Ingresos() {
 
   /* ── Nueva factura ────────────────────────────────────────────────── */
   const change = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
-  const isReady = form.cliente && form.servicio && form.tipo
+  const isReady = form.cliente && form.servicio && selectedEntity && form.tipo
   const guardar = () => {
     setSubmitted(true)
     if (!isReady) return
-    setData(prev => [{ id: Date.now(), nro: prev.length + 131, estado: 'PENDIENTE', cliente: form.cliente, servicio: form.servicio, importe: form.importe || '$50.000,00', total: '$62.400,00', tipo: form.tipo, entidad: 'Kyra SRL', fecha: new Date().toLocaleDateString('es-AR'), errorCode: null }, ...prev])
+    setData(prev => [{ id: Date.now(), nro: prev.length + 131, estado: 'PENDIENTE', cliente: form.cliente, servicio: form.servicio, importe: form.importe || '$50.000,00', total: '$62.400,00', tipo: form.tipo, entidadId: selectedEntity.id, entidad: selectedEntity.name, fecha: new Date().toLocaleDateString('es-AR'), errorCode: null }, ...prev])
     setForm(EMPTY_FAC); setSubmitted(false); setOpen(false)
   }
 
@@ -315,7 +323,7 @@ export default function Ingresos() {
           <FilterBox id="ing-estado" label="Estado" options={ESTADOS} value={filtroEstado} onChange={v => { setFiltroEstado(v); setPage(1) }} />
           <FilterBox id="ing-cliente" label="Cliente" options={CLIENTES} value={filtroCliente} onChange={v => { setFiltroCliente(v); setPage(1) }} />
           <FilterBox id="ing-servicio" label="Servicio" options={SERVICIOS} value={filtroServicio} onChange={v => { setFiltroServicio(v); setPage(1) }} />
-          <FilterBox id="ing-entidad" label="Entidad emisora" options={ENTIDADES} value={filtroEntidad} onChange={v => { setFiltroEntidad(v); setPage(1) }} />
+          <FilterBox id="ing-entidad" label="Entidad emisora" options={entityFilterOptions} value={filtroEntidad} onChange={v => { setFiltroEntidad(v); setPage(1) }} />
           <div className="search-wrap">
             <label htmlFor="ing-search" className="sr-only">Buscar facturas</label>
             <input id="ing-search" className="search-input" placeholder="Buscar" value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
@@ -597,6 +605,13 @@ export default function Ingresos() {
           <select id="ing-f-servicio" className="form-select" name="servicio" value={form.servicio} onChange={change}>
             <option value=""></option>
             {SERVICIOS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label htmlFor="ing-f-entidad">Entidad emisora <span className="label-req">*</span></label>
+          <select id="ing-f-entidad" className="form-select" name="entidadId" value={form.entidadId} onChange={change}>
+            <option value=""></option>
+            {activeEntities.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
           </select>
         </div>
         <div className="form-row">

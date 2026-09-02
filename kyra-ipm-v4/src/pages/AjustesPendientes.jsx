@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { AJUSTES_INICIAL } from '../data/ajustes'
 import { HISTORIAL_PERIODOS } from '../data/historialPeriodos'
 import { CLIENTES_INICIAL } from '../data/clientes'
-import { ENTIDADES_INICIAL } from '../data/entidades'
 import { SERVICIOS_INICIAL } from '../data/servicios'
+import { useEntities } from '../context/EntitiesContext'
 
 // ── Período actual ────────────────────────────────────────────────────────────
 const MES_ACTUAL = 'agosto'
@@ -39,10 +39,10 @@ function useCliente(clienteId) {
   return CLIENTES_INICIAL.find(c => c.id === clienteId) || null
 }
 
-function useEntidadDeCliente(clienteId) {
+function getEntidadDeCliente(clienteId, entities) {
   const c = CLIENTES_INICIAL.find(cl => cl.id === clienteId)
   if (!c) return null
-  return ENTIDADES_INICIAL.find(e => e.id === c.entidadEmisoraId) || null
+  return entities.find(entity => String(entity.id) === String(c.entidadEmisoraId)) || null
 }
 
 // ── Atoms UI ──────────────────────────────────────────────────────────────────
@@ -124,9 +124,9 @@ function StatCard({ label, count, color, active, onClick }) {
 
 // ── Card: Necesitan revisión ──────────────────────────────────────────────────
 
-function CardRevision({ ajuste, servicios, onEditar }) {
+function CardRevision({ ajuste, servicios, entities, onEditar }) {
   const cliente = useCliente(ajuste.clienteId)
-  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
   const svc = servicios.find(s => s.id === ajuste.servicioId)
   const montoDespues = calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
 
@@ -147,7 +147,7 @@ function CardRevision({ ajuste, servicios, onEditar }) {
             {ajuste.alertaAumentoSignificativo && <BadgeAlerta alerta={true} />}
           </div>
           <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-            <span>{entidad?.nombre || '—'}</span>
+            <span>{entidad?.name || '—'}</span>
             <span>·</span>
             <span>Factura {cliente?.tipoFactura || '—'}</span>
             <span>·</span>
@@ -198,9 +198,9 @@ function CardRevision({ ajuste, servicios, onEditar }) {
 
 // ── Card: Listas para aprobar / Aprobadas ─────────────────────────────────────
 
-function CardAprobacion({ ajuste, servicios, onAprobar, onRechazar, esHistorial }) {
+function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, esHistorial }) {
   const cliente = useCliente(ajuste.clienteId)
-  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
   const svc = servicios.find(s => s.id === ajuste.servicioId)
   const montoDespues = ajuste.montoDespues ?? calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
   const impactoMensual = (ajuste.montoAntes !== null && montoDespues !== null)
@@ -222,7 +222,7 @@ function CardAprobacion({ ajuste, servicios, onAprobar, onRechazar, esHistorial 
             <TagCliente />
           </div>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
-            {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+            {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
           </div>
           <div style={{ fontSize: 32, fontWeight: 800, color: '#111827', lineHeight: 1 }}>
             {formatARS(montoDespues)}
@@ -342,7 +342,7 @@ function TabHistorial() {
 
 // ── Pantalla de edición (Pantalla 3) ─────────────────────────────────────────
 
-function PaginaEditar({ ajuste, servicios, onGuardar, onAprobar, onCancelar }) {
+function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCancelar }) {
   const [form, setForm] = useState({
     tipo: ajuste.tipoAjuste || 'IPC',
     porcentaje: String(ajuste.porcentajeIPC),
@@ -351,7 +351,7 @@ function PaginaEditar({ ajuste, servicios, onGuardar, onAprobar, onCancelar }) {
   })
 
   const cliente = useCliente(ajuste.clienteId)
-  const entidad = useEntidadDeCliente(ajuste.clienteId)
+  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
   const svc = servicios.find(s => s.id === ajuste.servicioId)
 
   const pct = parseFloat(form.porcentaje)
@@ -395,7 +395,7 @@ function PaginaEditar({ ajuste, servicios, onGuardar, onAprobar, onCancelar }) {
         Editar ajuste — {cliente?.nombre || '—'}
       </h1>
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 22 }}>
-        {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'} · {ajuste.impactoNivel === 'alto' ? '🔴 Alto impacto' : '🟢 Bajo impacto'}
+        {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'} · {ajuste.impactoNivel === 'alto' ? '🔴 Alto impacto' : '🟢 Bajo impacto'}
       </div>
 
       {/* Card resumen del ajuste */}
@@ -415,7 +415,7 @@ function PaginaEditar({ ajuste, servicios, onGuardar, onAprobar, onCancelar }) {
             )}
           </div>
           <div style={{ fontSize: 13, color: '#6b7280' }}>
-            {svc?.nombre || '—'} · {entidad?.nombre || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+            {svc?.nombre || '—'} · {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -638,6 +638,7 @@ const TABS = [
 
 export default function AjustesPendientes() {
   useEffect(() => { document.title = 'Ajustes IPC — IPM Kyra' }, [])
+  const { entities } = useEntities()
 
   const [ajustes, setAjustes] = useState(AJUSTES_INICIAL)
   const [servicios, setServicios] = useState(SERVICIOS_INICIAL)
@@ -726,6 +727,7 @@ export default function AjustesPendientes() {
       <PaginaEditar
         ajuste={ajusteEnEdicion}
         servicios={servicios}
+        entities={entities}
         onGuardar={guardarCambios}
         onAprobar={aprobarAjuste}
         onCancelar={() => setAjusteEnEdicion(null)}
@@ -814,6 +816,7 @@ export default function AjustesPendientes() {
               key={a.id}
               ajuste={a}
               servicios={servicios}
+              entities={entities}
               onEditar={setAjusteEnEdicion}
             />
           ))}
@@ -822,6 +825,7 @@ export default function AjustesPendientes() {
               key={a.id}
               ajuste={a}
               servicios={servicios}
+              entities={entities}
               onAprobar={id => aprobarAjuste(id, {
                 tipoAjuste: a.tipoAjuste,
                 porcentajeIPC: a.porcentajeIPC,

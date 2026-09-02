@@ -1,6 +1,6 @@
 // /src/data/lineasFacturacion.js
 // Mock data de líneas de facturación — Agosto 2026.
-// clienteId → CLIENTES_INICIAL, servicioId → SERVICIOS_INICIAL, entidadId → ENTIDADES_INICIAL
+// clienteId → CLIENTES_INICIAL, servicioId → SERVICIOS_INICIAL, entidadId → seed local de Supabase
 // Estados: revision → aprobada → emitida → enviada
 
 export const LINEAS_INICIAL = [

@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Footer from './components/Footer'
+import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Administracion from './pages/Administracion'
 import Ingresos from './pages/Ingresos'
@@ -8,14 +9,38 @@ import Egresos from './pages/Egresos'
 import Emails from './pages/Emails'
 import FacturacionMes from './pages/FacturacionMes'
 import AjustesPendientes from './pages/AjustesPendientes'
-import EntidadDetalle from './pages/EntidadDetalle'
+import EntidadDetalle from './pages/EntidadDetallePage'
 import ClienteDetalle from './pages/ClienteDetalle'
 import EmisionPage from './pages/EmisionPage'
 import { FacturacionProvider } from './context/FacturacionContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { EntitiesProvider } from './context/EntitiesContext'
 
-export default function App() {
+function AppLoading() {
   return (
-    <BrowserRouter>
+    <main className="route-loading" role="status" aria-live="polite">
+      <span className="route-loading-mark" aria-hidden="true" />
+      Cargando sesión…
+    </main>
+  )
+}
+
+function ProtectedApp() {
+  const { session, loading, isConfigured } = useAuth()
+  const location = useLocation()
+
+  if (loading) return <AppLoading />
+  if (!isConfigured) return <Navigate to="/login" replace />
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+  }
+
+  return <AppShell />
+}
+
+function AppShell() {
+  return (
+    <EntitiesProvider>
       <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
       <div className="app-layout">
         <Sidebar />
@@ -40,6 +65,19 @@ export default function App() {
           <Footer />
         </div>
       </div>
+    </EntitiesProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/*" element={<ProtectedApp />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
