@@ -323,6 +323,14 @@ html, body, #root {
 .entity-form-grid { display: grid; gap: 14px; }
 .entity-form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .entity-form-span-2 { grid-column: 1 / -1; }
+
+/* ─── Catalog lists (países / condiciones fiscales / categorías de impuesto) ─── */
+.catalog-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.catalog-list-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px; }
+.catalog-list-item-inactive { opacity: 0.5; text-decoration: line-through; }
+.catalog-list-empty { font-size: 13px; opacity: 0.5; padding: 6px 0; }
+.catalog-add-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.catalog-add-row .form-input, .catalog-add-row .form-select { flex: 1; }
 .entity-check { display: inline-flex; align-items: center; gap: 8px; color: var(--gray-700); font-size: 12px; cursor: pointer; }
 .entity-check input { accent-color: var(--black); }
 .entity-b-exempt { margin-top: 2px; }

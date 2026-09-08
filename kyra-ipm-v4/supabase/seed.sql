@@ -108,4 +108,122 @@ insert into public.entity_bank_accounts (
   )
 on conflict do nothing;
 
+insert into public.countries (id, code, name, active) values
+  (1, 'AR', 'Argentina', true),
+  (2, 'CO', 'Colombia', true),
+  (3, 'CR', 'Costa Rica', true)
+on conflict (id) do nothing;
+
+select setval(
+  pg_get_serial_sequence('public.countries', 'id'),
+  greatest((select max(id) from public.countries), 1),
+  true
+);
+
+insert into public.fiscal_conditions (id, country_id, name, active) values
+  (1, 1, 'Responsable Inscripto', true),
+  (2, 1, 'Monotributista', true),
+  (3, 1, 'Exento', true),
+  (4, 2, 'Régimen Común', true),
+  (5, 2, 'Régimen Simplificado', true),
+  (6, 3, 'Régimen Tradicional', true)
+on conflict (id) do nothing;
+
+select setval(
+  pg_get_serial_sequence('public.fiscal_conditions', 'id'),
+  greatest((select max(id) from public.fiscal_conditions), 1),
+  true
+);
+
+insert into public.tax_categories (id, name, tax_rate, active) values
+  (1, 'Colombia 12.5%', 12.50, true),
+  (2, 'Costa Rica 0%', 0.00, true)
+on conflict (id) do nothing;
+
+select setval(
+  pg_get_serial_sequence('public.tax_categories', 'id'),
+  greatest((select max(id) from public.tax_categories), 1),
+  true
+);
+
+insert into public.clients (
+  id, name, status, billing_entity_id, country_id, fiscal_condition_id, fiscal_id,
+  tax_category_id, primary_email, ipc_adjustable, ipc_periodicity, internal_notes,
+  created_by, updated_by
+) values
+  (
+    1, 'Ayax', 'active', 1, 1, 1, '30-70901901-1',
+    null, 'contacto@ayax.com.ar', false, null, null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    2, 'Edding COL', 'active', 3, 2, 4, 'NIT-900111222-3',
+    1, 'finance@edding.com.co', false, null,
+    'Pagar a Valen y Floppy // Controlar en TC Visa Mai // Cobrar a cliente',
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    3, 'Maped', 'active', 3, 2, 4, 'NIT-900333444-5',
+    1, 'admin@maped.com', false, null,
+    'Pagar a Valen y Floppy // Controlar en TC Visa Mai // Cobrar a cliente',
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    4, 'SCS', 'active', 2, 1, 2, '30-69630509-5',
+    null, 'facturacion@scs.com.ar', true, 'quarterly', null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    5, 'Entelai', 'active', 1, 1, 1, '30-71580232-1',
+    null, 'administracion@entelai.com', true, 'quarterly', null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    6, 'P4C', 'active', 1, 1, 1, '30-71825771-5',
+    null, 'sin-envio+p4c@kyra.internal', false, null, 'Pack de las 10 hs mensuales',
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    7, 'Laura Di Cola', 'active', 2, 1, 2, '27-20283685-8',
+    null, 'lauradico@gmail.com', true, 'quarterly', null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    8, 'THC', 'active', 2, 1, 2, '30-71643480-6',
+    null, 'admin@thc.com.ar', true, 'quarterly', null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    9, 'UTALK', 'active', 1, 1, 1, '30-71547070-1',
+    null, 'admin@utalk.io', false, null, null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    10, 'Clínica Raña', 'active', 1, 1, 1, '30-65475263-6',
+    null, 'administracion@clinicarana.com.ar', false, null, null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    11, 'Fundación Holters', 'active', 2, 1, 3, '30-54208481-9',
+    null, 'tesoreria@holters.org.ar', false, null, null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  ),
+  (
+    12, 'Dra. Rojas', 'active', 2, 1, 2, '20-32577039-3',
+    null, 'dra.rojas@gmail.com', false, null, null,
+    '11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'
+  )
+on conflict (id) do nothing;
+
+select setval(
+  pg_get_serial_sequence('public.clients', 'id'),
+  greatest((select max(id) from public.clients), 1),
+  true
+);
+
+insert into public.client_emails (client_id, email) values
+  (3, 'contabilidad@maped.com'),
+  (5, 'contabilidad@entelai.com')
+on conflict do nothing;
+
 commit;

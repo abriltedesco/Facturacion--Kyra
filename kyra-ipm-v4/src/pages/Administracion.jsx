@@ -4,8 +4,11 @@ import Modal from '../components/Modal'
 import EntityFormModal from '../components/Entidades/EntityFormModal'
 import EntityStatusDialog from '../components/Entidades/EntityStatusDialog'
 import { useEntities } from '../context/EntitiesContext'
+import { useClients } from '../context/ClientsContext'
+import ClienteFormModal from '../components/Clientes/ClienteFormModal'
+import ClienteStatusDialog from '../components/Clientes/ClienteStatusDialog'
+import CatalogsModal from '../components/Clientes/CatalogsModal'
 import { getArcaStatus } from '../domain/arca'
-import { CLIENTES_INICIAL } from '../data/clientes'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
 const PAGE_SIZE = 10
@@ -14,44 +17,7 @@ const PAGE_SIZE = 10
 
 // ── Helpers para Clientes ──────────────────────────────────────────────────────
 
-const PAISES = ['Argentina', 'Colombia', 'Costa Rica', 'Otro']
-
-const CONDICION_FISCAL_POR_PAIS = {
-  Argentina:    ['Responsable Inscripto', 'Monotributista', 'Exento'],
-  Colombia:     ['Régimen Común', 'Régimen Simplificado'],
-  'Costa Rica': ['Régimen Tradicional', 'Régimen Simplificado'],
-}
-
-const LABEL_ID_FISCAL = {
-  Argentina:    'CUIT',
-  Colombia:     'NIT',
-  'Costa Rica': 'Tax ID',
-  Otro:         'Tax ID',
-}
-
-/**
- * Tipos de factura disponibles según el tipo de entidad emisora.
- * Clave = `legalType` normalizado por el repositorio de entidades.
- */
-const TIPOS_FACTURA_BY_ENTIDAD_TIPO = {
-  srl:            ['A', 'B (Exento IVA)'],
-  monotributista: ['C'],
-  llc:            ['Invoice LLC'],
-}
-
-/** Normaliza el tipo de comprobante de entidad al código corto que usa el cliente */
-function comprobanteToTipo(comprobante) {
-  if (!comprobante) return ''
-  if (comprobante === 'A') return 'A'
-  if (comprobante === 'B_EXEMPT') return 'B (Exento IVA)'
-  if (comprobante === 'C') return 'C'
-  if (comprobante === 'LLC') return 'Invoice LLC'
-  if (comprobante.startsWith('Factura A')) return 'A'
-  if (comprobante.startsWith('Factura B')) return 'B (Exento IVA)'
-  if (comprobante.startsWith('Factura C')) return 'C'
-  if (comprobante.startsWith('Invoice'))   return 'Invoice LLC'
-  return comprobante
-}
+const CLIENT_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo', archived: 'Archivado' }
 
 const PROVEEDORES_DATA = Array.from({ length: 10 }, (_, i) => ({
   id: i + 1,
@@ -161,12 +127,6 @@ const SERVICIOS_DATA = [
 
 // ── Forms ────────────────────────────────────────────────────────────────────
 
-const EMPTY_CLIENTE = {
-  nombre: '', email: '', pais: '', condicionFiscal: '',
-  identificacionFiscal: '', entidadEmisoraId: '', tipoFactura: '',
-  periodoCierreMes: true, impuestoAdicional: '',
-  actualizacionIPC: false, carpetaDrive: '', contacto: '', notas: '',
-}
 const EMPTY_PROVEEDOR = { nombre: '', email: '', tipoServicio: '', metodoPago: '', destino: '', cuit: '' }
 const EMPTY_SERVICIO  = { nombre: '', tipoSvc: 'Fijo', precioBase: '', moneda: 'ARS', estadoInicial: true }
 
@@ -234,27 +194,39 @@ export default function Administracion() {
     saveEntity,
     setEntityStatus,
   } = useEntities()
+  const {
+    clients: managedClients,
+    countries,
+    activeCountries,
+    fiscalConditions,
+    taxCategories,
+    activeTaxCategories,
+    loading: clientsLoading,
+    error: clientsError,
+    getFiscalConditionsByCountry,
+    saveClient,
+    setClientStatus,
+    saveCountry,
+    saveFiscalCondition,
+    saveTaxCategory,
+  } = useClients()
   const [tab, setTab] = useState(0)
-  const [clientes, setClientes] = useState(CLIENTES_INICIAL)
   const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
   const [servicios, setServicios] = useState(SERVICIOS_DATA)
   const [editingServicio, setEditingServicio] = useState(null)
   const [editingManagedEntity, setEditingManagedEntity] = useState(null)
   const [entityStatusAction, setEntityStatusAction] = useState(null)
   const [changingEntityStatus, setChangingEntityStatus] = useState(false)
+  const [editingCliente, setEditingCliente] = useState(null) // null = crear, objeto = editar
+  const [clientStatusAction, setClientStatusAction] = useState(null)
+  const [changingClientStatus, setChangingClientStatus] = useState(false)
 
   const [openModal, setOpenModal] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
-  const [formC, setFormC] = useState(EMPTY_CLIENTE)
   const [formP, setFormP] = useState(EMPTY_PROVEEDOR)
   const [formS, setFormS] = useState(EMPTY_SERVICIO)
   const [submitted, setSubmitted] = useState(false)
 
-  // Estado extra para el modal de Clientes
-  const [editingCliente, setEditingCliente] = useState(null) // null = crear, objeto = editar
-
-  const [ccList, setCcList] = useState([])
-  const [ccInput, setCcInput] = useState('')
   const [rowMenuOpen, setRowMenuOpen] = useState(null)
   const [expandedServicio, setExpandedServicio] = useState(null)
   const [historialAnio, setHistorialAnio] = useState(String(new Date().getFullYear()))
@@ -291,40 +263,26 @@ export default function Administracion() {
   }, [])
 
   function handleDeleteRow(id) {
-    const setters = [setClientes, setProveedores, null, setServicios]
+    const setters = [null, setProveedores, null, setServicios]
     const setter = setters[tab]
     if (setter) setter(prev => prev.filter(r => r.id !== id))
     setRowMenuOpen(null)
   }
 
-  function handleToggleCliente(id) {
-    setClientes(prev => prev.map(c =>
-      c.id === id ? { ...c, estado: c.estado === 'Activo' ? 'Inactivo' : 'Activo' } : c
-    ))
-    setRowMenuOpen(null)
+  function openClienteForm(client = null) {
+    setEditingCliente(client)
+    setOpenModal('cliente')
   }
 
-  function openEditCliente(cliente) {
-    setEditingCliente(cliente)
-    setFormC({
-      nombre: cliente.nombre || '',
-      email: cliente.email || '',
-      pais: cliente.pais || '',
-      condicionFiscal: cliente.condicionFiscal || '',
-      identificacionFiscal: cliente.identificacionFiscal || '',
-      entidadEmisoraId: String(cliente.entidadEmisoraId || ''),
-      tipoFactura: cliente.tipoFactura || '',
-      periodoCierreMes: cliente.periodoCierreMes ?? true,
-      impuestoAdicional: String(cliente.impuestoAdicional ?? ''),
-      actualizacionIPC: cliente.actualizacionIPC || false,
-      carpetaDrive: cliente.carpetaDrive || '',
-      contacto: cliente.contacto || '',
-      notas: cliente.notas || '',
-    })
-    setCcList(cliente.emailsCopia || [])
-    setCcInput('')
-    setSubmitted(false)
-    setOpenModal('cliente')
+  async function changeClientStatus(client, nextStatus) {
+    setChangingClientStatus(true)
+    try {
+      await setClientStatus(client, nextStatus)
+      setClientStatusAction(null)
+      setRowMenuOpen(null)
+    } finally {
+      setChangingClientStatus(false)
+    }
   }
 
   function openManagedEntityForm(entity = null) {
@@ -343,12 +301,13 @@ export default function Administracion() {
     }
   }
 
-  const currentData = [clientes, proveedores, managedEntities, servicios][tab]
+  const currentData = [managedClients, proveedores, managedEntities, servicios][tab]
+  const STATUS_LABEL_BY_TAB = { 0: CLIENT_STATUS_LABEL, 2: ENTITY_STATUS_LABEL }
 
   const filtered = currentData.filter(r => {
     const q = search.toLowerCase()
     const rowName = r.name || r.nombre || ''
-    const rowEmail = r.billingEmail || r.mail || r.email || ''
+    const rowEmail = r.primaryEmail || r.billingEmail || r.mail || r.email || ''
     const rowFiscalId = r.fiscalId || r.identificacionFiscal || r.identificacion || ''
     const accounts = r.bankAccounts || r.cuentas
     const cuentasStr = Array.isArray(accounts) ? accounts.map(c => c.bankName || c.banco || '').join(' ') : (r.cuentaBancaria || '')
@@ -357,7 +316,7 @@ export default function Administracion() {
       || rowEmail.toLowerCase().includes(q)
       || rowFiscalId.toLowerCase().includes(q)
       || cuentasStr.toLowerCase().includes(q)
-    const status = r.status ? (ENTITY_STATUS_LABEL[r.status] || r.status) : r.estado
+    const status = r.status ? ((STATUS_LABEL_BY_TAB[tab] || {})[r.status] || r.status) : r.estado
     const matchEstado = !filtroEstado || String(status).toUpperCase() === filtroEstado.toUpperCase()
     return matchSearch && matchEstado
   })
@@ -373,75 +332,12 @@ export default function Administracion() {
   }
 
   // Guardar handlers
-  const chC = e => setFormC(p => ({ ...p, [e.target.name]: e.target.value }))
   const chP = e => setFormP(p => ({ ...p, [e.target.name]: e.target.value }))
   const chS = e => setFormS(p => ({ ...p, [e.target.name]: e.target.value }))
 
-  // Entidad emisora condiciona el tipo de factura por defecto
-  const chEntidadCliente = e => {
-    const id = e.target.value
-    const ent = managedEntities.find(en => String(en.id) === id)
-    const tiposDisponibles = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.legalType] || []) : []
-    const defecto = ent ? comprobanteToTipo(ent.defaultVoucher) : ''
-    setFormC(p => ({
-      ...p,
-      entidadEmisoraId: id,
-      tipoFactura: tiposDisponibles.length === 1 ? tiposDisponibles[0] : (tiposDisponibles.includes(defecto) ? defecto : ''),
-    }))
-  }
-
-  // País condiciona condición fiscal
-  const chPais = e => {
-    setFormC(p => ({ ...p, pais: e.target.value, condicionFiscal: '' }))
-  }
-
-  // CC emails chips
-  const addCc = () => {
-    const v = ccInput.trim()
-    if (v && !ccList.includes(v)) setCcList(p => [...p, v])
-    setCcInput('')
-  }
-  const removeCc = m => setCcList(p => p.filter(x => x !== m))
-
-  const isReadyC = formC.nombre && formC.entidadEmisoraId && formC.tipoFactura && formC.pais && formC.impuestoAdicional !== ''
   const isReadyP = formP.nombre && formP.email && formP.destino
   const isReadyS = formS.nombre && formS.tipoSvc
 
-  const guardarC = () => {
-    setSubmitted(true)
-    if (!isReadyC) return
-
-    const base = {
-      nombre: formC.nombre,
-      email: formC.email,
-      emailsCopia: [...ccList],
-      pais: formC.pais,
-      condicionFiscal: formC.condicionFiscal,
-      identificacionFiscal: formC.identificacionFiscal,
-      entidadEmisoraId: Number(formC.entidadEmisoraId),
-      tipoFactura: formC.tipoFactura,
-      periodoCierreMes: formC.periodoCierreMes,
-      impuestoAdicional: parseFloat(formC.impuestoAdicional) || 0,
-      actualizacionIPC: formC.actualizacionIPC,
-      carpetaDrive: formC.carpetaDrive,
-      contacto: formC.contacto,
-      notas: formC.notas,
-    }
-
-    if (editingCliente) {
-      setClientes(prev => prev.map(c => c.id === editingCliente.id ? { ...c, ...base } : c))
-    } else {
-      setClientes(prev => [{ id: Date.now(), estado: 'Activo', ...base }, ...prev])
-    }
-
-    setFormC(EMPTY_CLIENTE)
-    setCcList([])
-    setCcInput('')
-    setEditingCliente(null)
-    setSubmitted(false)
-    setOpenModal(null)
-    setTab(0)
-  }
   const guardarP = () => {
     setSubmitted(true)
     if (!isReadyP) return
@@ -504,8 +400,6 @@ export default function Administracion() {
     setSubmitted(false)
     setEditingCliente(null)
     setEditingServicio(null)
-    setCcList([])
-    setCcInput('')
   }
 
   // Table columns per tab
@@ -523,60 +417,63 @@ export default function Administracion() {
         </tr></thead>
         <tbody>
           {pageRows.length === 0
-            ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
+            ? <tr><td colSpan={7} className="td-empty">{clientsLoading ? 'Cargando clientes…' : 'Sin resultados'}</td></tr>
             : pageRows.map(r => {
-                const entidad = managedEntities.find(e => String(e.id) === String(r.entidadEmisoraId))
-                const tipoLabel = r.tipoFactura
-                  ? (r.tipoFactura + (entidad ? ' — ' + entidad.name : ''))
+                const tipoLabel = r.billingEntity
+                  ? (ENTITY_VOUCHER_LABEL[r.billingEntity.defaultVoucher] || '—') + ' — ' + r.billingEntity.name
                   : '—'
                 return (
-                  <tr key={r.id} className="tr-clickable" onClick={() => openEditCliente(r)}>
+                  <tr key={r.id} className="tr-clickable" onClick={() => openClienteForm(r)}>
                     <td>
-                      <span className="link-nro">{r.nombre}</span>
-                      {r.actualizacionIPC && (
+                      <span className="link-nro">{r.name}</span>
+                      {r.ipcAdjustable && (
                         <span title="Actualización por IPC" style={{
                           marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#6366f1',
                           background: '#eef2ff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle',
                         }}>IPC</span>
                       )}
-                      {!r.periodoCierreMes && (
-                        <span title="Pack / esporádico" style={{
-                          marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#d97706',
-                          background: '#fef3c7', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle',
-                        }}>PACK</span>
-                      )}
                     </td>
-                    <td><Badge estado={r.estado} /></td>
-                    <td className="td-muted">{r.email || '—'}</td>
+                    <td><Badge estado={CLIENT_STATUS_LABEL[r.status] || r.status} /></td>
+                    <td className="td-muted">{r.primaryEmail || '—'}</td>
                     <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{tipoLabel}</td>
                     <td>
-                      {r.impuestoAdicional > 0
+                      {r.taxCategory
                         ? <span style={{
                             display: 'inline-block', padding: '2px 7px', borderRadius: 6,
                             fontSize: 11, fontWeight: 700, color: '#b45309', background: '#fef3c7',
-                          }}>{r.impuestoAdicional}%</span>
+                          }}>{r.taxCategory.taxRate}%</span>
                         : <span className="td-muted">—</span>
                       }
                     </td>
-                    <td className="td-muted">{r.identificacionFiscal || r.identificacion || '—'}</td>
+                    <td className="td-muted">{r.fiscalId || '—'}</td>
                     <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
-                      <button className="dots-btn" aria-label={'Opciones ' + r.nombre} aria-expanded={rowMenuOpen === r.id}
+                      <button className="dots-btn" aria-label={'Opciones ' + r.name} aria-expanded={rowMenuOpen === r.id}
                         onClick={() => setRowMenuOpen(prev => prev === r.id ? null : r.id)}>⋮</button>
                       {rowMenuOpen === r.id && (
                         <div className="row-menu" ref={rowMenuRef} role="menu">
-                          <button className="row-menu-item" role="menuitem" onClick={() => { openEditCliente(r); setRowMenuOpen(null) }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                            Editar
-                          </button>
-                          <button className="row-menu-item" role="menuitem" onClick={() => handleToggleCliente(r.id)}>
-                            {r.estado === 'Activo'
-                              ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
-                              : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
-                            }
-                          </button>
+                          {r.status !== 'archived' && (
+                            <button className="row-menu-item" role="menuitem" onClick={() => { openClienteForm(r); setRowMenuOpen(null) }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                              Editar
+                            </button>
+                          )}
+                          {r.status === 'archived' ? (
+                            <button className="row-menu-item" role="menuitem" onClick={() => { setClientStatusAction({ client: r, action: 'restore' }); setRowMenuOpen(null) }}>
+                              Restaurar
+                            </button>
+                          ) : (
+                            <>
+                              <button className="row-menu-item" role="menuitem" onClick={() => { setClientStatusAction({ client: r, action: r.status === 'active' ? 'deactivate' : 'activate' }); setRowMenuOpen(null) }}>
+                                {r.status === 'active' ? 'Desactivar' : 'Activar'}
+                              </button>
+                              <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => { setClientStatusAction({ client: r, action: 'archive' }); setRowMenuOpen(null) }}>
+                                Archivar
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </td>
@@ -848,7 +745,7 @@ export default function Administracion() {
       {/* Single toolbar row: filter + search + export + import + NUEVO dropdown */}
       <div className="admin-toolbar">
         <FilterBox id="admin-estado" label="Estado"
-          options={tab === 0 ? ['Activo', 'Inactivo'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva', 'Archivada'] : ['Activo', 'Inactivo']}
+          options={tab === 0 ? ['Activo', 'Inactivo', 'Archivado'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva', 'Archivada'] : ['Activo', 'Inactivo']}
           value={filtroEstado} onChange={v => { setFiltroEstado(v); setPage(1) }} />
 
         <div className="search-wrap">
@@ -863,6 +760,9 @@ export default function Administracion() {
         </div>
 
         <div className="admin-toolbar-right">
+          {tab === 0 && (
+            <button className="btn-arca-secondary" onClick={() => setOpenModal('catalogos')}>Catálogos</button>
+          )}
           <button className="icon-btn" aria-label="Exportar">{SVG_EXPORT}</button>
           <button className="icon-btn" aria-label="Importar">{SVG_IMPORT}</button>
 
@@ -883,7 +783,7 @@ export default function Administracion() {
             {showDropdown && (
               <div className="nuevo-dropdown" role="menu">
                 {[
-                  { label: 'Nuevo cliente', action: () => { setTab(0); setOpenModal('cliente'); setFormC(EMPTY_CLIENTE); setEditingCliente(null); setCcList([]); setCcInput(''); setSubmitted(false); setShowDropdown(false) } },
+                  { label: 'Nuevo cliente', action: () => { setTab(0); openClienteForm(null); setShowDropdown(false) } },
                   { label: 'Nuevo proveedor', action: () => { setTab(1); setOpenModal('proveedor'); setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setShowDropdown(false) } },
                   { label: 'Nueva entidad', action: () => { setTab(2); openManagedEntityForm(); setShowDropdown(false) } },
                   { label: 'Nuevo servicio', action: () => { setTab(3); setOpenModal('servicio'); setFormS(EMPTY_SERVICIO); setSubmitted(false); setShowDropdown(false) } },
@@ -917,206 +817,24 @@ export default function Administracion() {
 
       {/* Table panel */}
       <div id="atab-panel" role="tabpanel" aria-labelledby={'atab-' + tab} className="table-container">
+        {tab === 0 && clientsError && <div className="admin-data-error" role="alert">{clientsError}</div>}
         {tab === 2 && entitiesError && <div className="admin-data-error" role="alert">{entitiesError}</div>}
         {renderTable()}
         <Pagination page={page} totalPages={totalPages} onChange={p => setPage(p)} />
       </div>
 
-      {/* NUEVO / EDITAR CLIENTE modal */}
-      <Modal
+      <ClienteFormModal
         isOpen={openModal === 'cliente'}
+        client={editingCliente}
         onClose={closeModal}
-        title={editingCliente ? 'EDITAR CLIENTE' : 'NUEVO CLIENTE'}
+        onSave={saveClient}
+        onSaved={() => { setOpenModal(null); setEditingCliente(null); setTab(0) }}
         triggerRef={btnNuevoRef}
-        footer={footerFor(isReadyC, guardarC)}
-      >
-        {/* Nombre */}
-        <div className="form-group">
-          <label htmlFor="c-nombre">Nombre del Cliente <span className="label-req">*</span></label>
-          <input
-            id="c-nombre"
-            className={'form-input' + (submitted && !formC.nombre ? ' input-error' : '')}
-            name="nombre" value={formC.nombre} onChange={chC}
-            placeholder="ej: Ayax"
-          />
-          {submitted && !formC.nombre && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* Email principal */}
-        <div className="form-group">
-          <label htmlFor="c-email">Email de facturación</label>
-          <input id="c-email" className="form-input" name="email" type="email"
-            value={formC.email} onChange={chC} placeholder="contacto@empresa.com" />
-        </div>
-
-        {/* Emails en copia */}
-        <div className="form-group">
-          <label htmlFor="c-cc">Emails en copia (CC)</label>
-          {ccList.length > 0 && (
-            <div className="cc-chips">
-              {ccList.map(m => (
-                <span key={m} className="cc-chip">
-                  {m}
-                  <button type="button" className="cc-chip-remove" aria-label={'Quitar ' + m} onClick={() => removeCc(m)}>×</button>
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="cc-add-row">
-            <input id="c-cc" className="form-input" type="email" placeholder="email@ejemplo.com"
-              value={ccInput} onChange={e => setCcInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCc() } }} />
-            <button type="button" className="btn-add-cc-form" onClick={addCc}>+ Agregar email</button>
-          </div>
-        </div>
-
-        {/* Entidad emisora */}
-        <div className="form-group form-group-destacado">
-          <label htmlFor="c-entidad">Entidad emisora <span className="label-req">*</span></label>
-          <select
-            id="c-entidad"
-            className={'form-select' + (submitted && !formC.entidadEmisoraId ? ' input-error' : '')}
-            value={formC.entidadEmisoraId} onChange={chEntidadCliente}
-          >
-            <option value=""></option>
-            {managedEntities.filter(e => e.status === 'active').map(e => (
-              <option key={e.id} value={String(e.id)}>{e.name}</option>
-            ))}
-          </select>
-          {submitted && !formC.entidadEmisoraId && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* Tipo de factura */}
-        <div className="form-group">
-          <label htmlFor="c-tipo">Tipo de Factura <span className="label-req">*</span></label>
-          {(() => {
-            const ent = managedEntities.find(e => String(e.id) === String(formC.entidadEmisoraId))
-            const tipos = ent ? (TIPOS_FACTURA_BY_ENTIDAD_TIPO[ent.legalType] || []) : []
-            const bloqueado = tipos.length === 1
-            return (
-              <>
-                <select
-                  id="c-tipo"
-                  className={'form-select' + (submitted && !formC.tipoFactura ? ' input-error' : '')}
-                  name="tipoFactura" value={formC.tipoFactura} onChange={chC}
-                  disabled={bloqueado}
-                >
-                  <option value=""></option>
-                  {tipos.map(t => <option key={t} value={t}>{t === 'Invoice LLC' ? 'Invoice LLC' : 'Factura ' + t}</option>)}
-                </select>
-                {!formC.entidadEmisoraId && <span className="field-hint">Seleccioná primero la entidad emisora</span>}
-                {bloqueado && <span className="field-hint">Definido por la entidad emisora</span>}
-              </>
-            )
-          })()}
-          {submitted && !formC.tipoFactura && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* País */}
-        <div className="form-group">
-          <label htmlFor="c-pais">País <span className="label-req">*</span></label>
-          <select
-            id="c-pais"
-            className={'form-select' + (submitted && !formC.pais ? ' input-error' : '')}
-            value={formC.pais} onChange={chPais}
-          >
-            <option value=""></option>
-            {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          {submitted && !formC.pais && <span className="field-error">Campo obligatorio</span>}
-        </div>
-
-        {/* Condición fiscal — condicional según país */}
-        {formC.pais && (
-          <div className="form-group">
-            <label htmlFor="c-condicion">Condición Fiscal</label>
-            {CONDICION_FISCAL_POR_PAIS[formC.pais] ? (
-              <select id="c-condicion" className="form-select" name="condicionFiscal" value={formC.condicionFiscal} onChange={chC}>
-                <option value=""></option>
-                {CONDICION_FISCAL_POR_PAIS[formC.pais].map(cf => <option key={cf} value={cf}>{cf}</option>)}
-              </select>
-            ) : (
-              <input id="c-condicion" className="form-input" name="condicionFiscal"
-                value={formC.condicionFiscal} onChange={chC} placeholder="Condición fiscal del país" />
-            )}
-          </div>
-        )}
-
-        {/* Identificación fiscal */}
-        <div className="form-group">
-          <label htmlFor="c-ident">{LABEL_ID_FISCAL[formC.pais] || 'Identificación Fiscal'}</label>
-          <input id="c-ident" className="form-input" name="identificacionFiscal"
-            value={formC.identificacionFiscal} onChange={chC}
-            placeholder={formC.pais === 'Argentina' ? 'ej: 20-12345678-1' : formC.pais === 'Colombia' ? 'ej: 900.123.456-7' : ''} />
-        </div>
-
-        {/* Período de facturación */}
-        <div className="form-group">
-          <label>Período de Facturación</label>
-          <div className="svc-tipo-group">
-            {[
-              { val: true,    label: 'Cierre de mes' },
-              { val: 'curso', label: 'Mes en curso' },
-              { val: false,   label: 'Pack / esporádico' },
-            ].map(opt => (
-              <label key={String(opt.val)} className={'svc-tipo-option' + (formC.periodoCierreMes === opt.val ? ' svc-tipo-active' : '')}>
-                <input type="radio" name="periodoCierreMes" checked={formC.periodoCierreMes === opt.val}
-                  onChange={() => setFormC(p => ({ ...p, periodoCierreMes: opt.val }))}
-                  style={{ display: 'none' }} />
-                {opt.label}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Impuesto adicional */}
-        <div className="form-group">
-          <label htmlFor="c-impuesto">Impuesto Adicional (%) <span className="label-req">*</span></label>
-          <input
-            id="c-impuesto"
-            className={'form-input' + (submitted && formC.impuestoAdicional === '' ? ' input-error' : '')}
-            name="impuestoAdicional" type="number" min="0" max="100" step="0.5"
-            value={formC.impuestoAdicional} onChange={chC}
-            placeholder="0"
-            style={{ maxWidth: 120 }}
-          />
-          <span className="field-hint">Ingresá 0 si no aplica impuesto adicional</span>
-          {submitted && formC.impuestoAdicional === '' && <span className="field-error">Campo obligatorio (0 si no aplica)</span>}
-        </div>
-
-        {/* Actualización por IPC */}
-        <div className="form-group">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'normal' }}>
-            <input
-              type="checkbox"
-              checked={formC.actualizacionIPC}
-              onChange={e => setFormC(p => ({ ...p, actualizacionIPC: e.target.checked }))}
-              style={{ width: 16, height: 16 }}
-            />
-            Actualización automática por IPC
-          </label>
-        </div>
-
-        {/* Contacto */}
-        <div className="form-group">
-          <label htmlFor="c-contacto">Nombre de Contacto</label>
-          <input id="c-contacto" className="form-input" name="contacto" value={formC.contacto} onChange={chC} />
-        </div>
-
-        {/* Carpeta Drive */}
-        <div className="form-group">
-          <label htmlFor="c-drive">Carpeta Drive (URL)</label>
-          <input id="c-drive" className="form-input" name="carpetaDrive" value={formC.carpetaDrive} onChange={chC}
-            placeholder="https://drive.google.com/..." />
-        </div>
-
-        {/* Notas internas */}
-        <div className="form-group">
-          <label htmlFor="c-notas">Notas internas</label>
-          <textarea id="c-notas" className="form-textarea" name="notas" value={formC.notas} onChange={chC}
-            placeholder="Instrucciones especiales, aclaraciones para la factura…" rows={3} />
-        </div>
-      </Modal>
+        billingEntities={managedEntities.filter(e => e.status === 'active')}
+        countries={activeCountries}
+        getFiscalConditionsByCountry={getFiscalConditionsByCountry}
+        taxCategories={activeTaxCategories}
+      />
 
       {/* NUEVO PROVEEDOR modal */}
       <Modal isOpen={openModal === 'proveedor'} onClose={closeModal} title="NUEVO PROVEEDOR" triggerRef={btnNuevoRef}
@@ -1168,6 +886,25 @@ export default function Administracion() {
         busy={changingEntityStatus}
         onCancel={() => setEntityStatusAction(null)}
         onConfirm={nextStatus => changeManagedEntityStatus(entityStatusAction.entity, nextStatus).catch(() => {})}
+      />
+
+      <ClienteStatusDialog
+        client={clientStatusAction?.client || null}
+        action={clientStatusAction?.action || null}
+        busy={changingClientStatus}
+        onCancel={() => setClientStatusAction(null)}
+        onConfirm={nextStatus => changeClientStatus(clientStatusAction.client, nextStatus).catch(() => {})}
+      />
+
+      <CatalogsModal
+        isOpen={openModal === 'catalogos'}
+        onClose={closeModal}
+        countries={countries}
+        fiscalConditions={fiscalConditions}
+        taxCategories={taxCategories}
+        onSaveCountry={saveCountry}
+        onSaveFiscalCondition={saveFiscalCondition}
+        onSaveTaxCategory={saveTaxCategory}
       />
 
       {/* NUEVO SERVICIO modal — catálogo global (T13) */}

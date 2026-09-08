@@ -1,13 +1,10 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useClients } from '../context/ClientsContext'
 
-const CLIENTES_MAP = {
-  1:  { nombre: 'Maped',       estado: 'ACTIVO', subtitulo: 'Cliente activo · facturación mensual · Kyra SRL' },
-  2:  { nombre: 'Edding ARG',  estado: 'ACTIVO', subtitulo: 'Cliente activo · facturación mensual · Kyra SRL' },
-  3:  { nombre: 'Edding COL',  estado: 'ACTIVO', subtitulo: 'Cliente activo · facturación mensual · Mercury LLC' },
-  4:  { nombre: 'Ayax',        estado: 'ACTIVO', subtitulo: 'Cliente activo · facturación mensual · Kyra SRL' },
-  5:  { nombre: 'TechCorp',    estado: 'ACTIVO', subtitulo: 'Cliente activo · facturación mensual · Mercury LLC' },
-}
+const CLIENT_STATUS_LABEL = { active: 'ACTIVO', inactive: 'INACTIVO', archived: 'ARCHIVADO' }
+const VOUCHER_LABEL = { A: 'A', B_EXEMPT: 'B (Exento IVA)', C: 'C', LLC: 'Invoice LLC' }
+const IPC_PERIODICITY_LABEL = { monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' }
 
 const SERVICIOS_CLIENTE = [
   { id: 1, nombre: 'Social Media',  tipo: 'Fijo',     tarifa: '$85,000.00',  moneda: 'ARS', periodicidad: 'Mensual',    estado: 'ACTIVO' },
@@ -35,7 +32,15 @@ const BADGE_MAP = {
 export default function ClienteDetalle() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const cliente = CLIENTES_MAP[Number(id)] || CLIENTES_MAP[1]
+  const { getClient, loading } = useClients()
+  const client = getClient(id)
+  const cliente = client
+    ? {
+        nombre: client.name,
+        estado: CLIENT_STATUS_LABEL[client.status] || client.status,
+        subtitulo: `Cliente ${(CLIENT_STATUS_LABEL[client.status] || client.status).toLowerCase()} · ${client.country?.name || 'sin país'} · ${client.billingEntity?.name || 'sin entidad emisora'}`,
+      }
+    : { nombre: loading ? 'Cargando…' : 'Cliente no encontrado', estado: '—', subtitulo: '' }
   const [tabPerfil, setTabPerfil]   = useState(1)  /* default: Servicios */
   const [histPanel, setHistPanel]   = useState(null)
   const [servicios, setServicios]   = useState(SERVICIOS_CLIENTE)
@@ -212,9 +217,23 @@ export default function ClienteDetalle() {
         <div style={{ marginTop: 24 }}>
           <div className="entidad-card entidad-card-datos" style={{ maxWidth: 560 }}>
             <h2 className="entidad-card-title">Datos generales</h2>
-            {[['Entidad emisora', 'Kyra SRL'], ['Tipo de factura', 'A'], ['Período', 'Mensual'], ['CUIT', '20-11111111-1'], ['Email de contacto', 'admin@maped.com'], ['Condición IVA', 'Responsable Inscripto']].map(([label, val]) => (
+            {client ? [
+              ['Entidad emisora', client.billingEntity?.name || '—'],
+              ['Tipo de factura', VOUCHER_LABEL[client.billingEntity?.defaultVoucher] || '—'],
+              ['País', client.country?.name || '—'],
+              ['Condición fiscal', client.fiscalCondition?.name || '—'],
+              ['Identificación fiscal', client.fiscalId || '—'],
+              ['Categoría de impuesto adicional', client.taxCategory ? `${client.taxCategory.name} (${client.taxCategory.taxRate}%)` : 'Sin impuesto adicional'],
+              ['Email principal', client.primaryEmail || '—'],
+              ['Emails en copia', client.ccEmails?.length ? client.ccEmails.join(', ') : '—'],
+              ['Actualización por IPC', client.ipcAdjustable ? `Sí — ${IPC_PERIODICITY_LABEL[client.ipcPeriodicity] || client.ipcPeriodicity}` : 'No'],
+              ['Carpeta de Drive', client.driveFolderRef || '—'],
+              ['Notas internas', client.internalNotes || '—'],
+            ].map(([label, val]) => (
               <div key={label} className="entidad-dato-row"><span className="entidad-dato-label">{label}</span><span className="entidad-dato-val">{val}</span></div>
-            ))}
+            )) : (
+              <p className="entidad-empty">{loading ? 'Cargando datos del cliente…' : 'No encontramos este cliente.'}</p>
+            )}
           </div>
         </div>
       )}
