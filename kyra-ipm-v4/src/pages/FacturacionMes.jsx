@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
 import Modal from '../components/Modal'
+import EmissionWarningDialog from '../components/Emision/EmissionWarningDialog'
 import { CLIENTES_INICIAL } from '../data/clientes'
 import { SERVICIOS_INICIAL } from '../data/servicios'
 import { HISTORIAL_INICIAL } from '../data/historialEnvios'
@@ -11,6 +13,7 @@ import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
 import HistorialEnviosDrawer from '../components/Emails/HistorialEnviosDrawer'
 import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
 import { getAllowedVoucherTypes } from '../domain/entityRules'
+import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 import { generarNroFactura } from '../data/contadoresFactura'
 
 
@@ -1235,6 +1238,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FacturacionMes() {
+  const navigate = useNavigate()
   const { lineas, setLineas, historialEmail, addHistorialEmail } = useFacturacion()
   const { entities: entidades, activeEntities } = useEntities()
   const [tabActivo,       setTabActivo]       = useState('revision')
@@ -1242,6 +1246,7 @@ export default function FacturacionMes() {
   const [emailDrawerLinea, setEmailDrawerLinea] = useState(null)
   const [lineaEditar,     setLineaEditar]     = useState(null)
   const [showNueva,       setShowNueva]       = useState(false)
+  const [emissionConfirmation, setEmissionConfirmation] = useState(null)
 
   const btnNuevaRef = useRef(null)
 
@@ -1300,7 +1305,19 @@ export default function FacturacionMes() {
     ))
   }
 
-  function emitirLinea(id) {
+  function solicitarEmision(id) {
+    const linea = lineas.find(item => item.id === id)
+    if (!linea) return
+
+    const entries = getEmissionWarningEntries({ lines: [linea], entities: entidades })
+    if (entries.length > 0) {
+      setEmissionConfirmation({ lineId: id, entries })
+      return
+    }
+    emitirLineaAhora(id)
+  }
+
+  function emitirLineaAhora(id) {
     let lineaEmitida
     setLineas(ls => {
       const linea  = ls.find(l => l.id === id)
@@ -1315,6 +1332,17 @@ export default function FacturacionMes() {
     })
     // Disparar envío de email en el próximo tick (lineaEmitida ya está construida)
     setTimeout(() => intentarEnvioEmail(lineaEmitida), 0)
+  }
+
+  function continueEmission() {
+    const lineId = emissionConfirmation?.lineId
+    setEmissionConfirmation(null)
+    if (lineId != null) emitirLineaAhora(lineId)
+  }
+
+  function openWarningEntity(entityId) {
+    setEmissionConfirmation(null)
+    navigate(`/administracion/entidad/${entityId}`)
   }
 
   function enviarLinea(id) {
@@ -1465,7 +1493,7 @@ export default function FacturacionMes() {
             grupo={grupo}
             entidades={entidades}
             servicios={servicios}
-            onEmitir={emitirLinea}
+            onEmitir={solicitarEmision}
             onRechazar={rechazarLinea}
           />
         ))}
@@ -1552,6 +1580,14 @@ export default function FacturacionMes() {
         entidades={activeEntities}
         servicios={servicios}
         triggerRef={btnNuevaRef}
+      />
+
+      <EmissionWarningDialog
+        isOpen={Boolean(emissionConfirmation)}
+        entries={emissionConfirmation?.entries || []}
+        onCancel={() => setEmissionConfirmation(null)}
+        onContinue={continueEmission}
+        onOpenEntity={openWarningEntity}
       />
     </div>
   )

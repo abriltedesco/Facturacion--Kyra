@@ -4,8 +4,10 @@
 // Módulo 8 integrado: auto-envío de email tras emisión exitosa.
 
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
+import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 
 import { CLIENTES_INICIAL } from '../data/clientes'
 import { SERVICIOS_INICIAL } from '../data/servicios'
@@ -23,6 +25,7 @@ import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEm
 import TablaEmision       from '../components/Emision/TablaEmision'
 import DrawerFacturaDetalle from '../components/Emision/DrawerFacturaDetalle'
 import ModalNuevaFactura  from '../components/Emision/ModalNuevaFactura'
+import EmissionWarningDialog from '../components/Emision/EmissionWarningDialog'
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,7 @@ const FILTROS = [
 ]
 
 export default function EmisionPage() {
+  const navigate = useNavigate()
   const { lineas, setLineas } = useFacturacion()
   const { entities, activeEntities } = useEntities()
   const contadoresRef                     = useRef({ ...CONTADORES_INICIAL })
@@ -61,6 +65,7 @@ export default function EmisionPage() {
   const [drawerLinea, setDrawerLinea]   = useState(null)
   const [filtroEstado, setFiltroEstado] = useState('todas')
   const [showNueva, setShowNueva]       = useState(false)
+  const [emissionConfirmation, setEmissionConfirmation] = useState(null)
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -140,10 +145,24 @@ export default function EmisionPage() {
 
   // ── emisión individual ─────────────────────────────────────────────────────
 
-  async function emitirLinea(linea) {
+  function solicitarEmision(linea) {
+    const entries = getEmissionWarningEntries({ lines: [linea], entities })
+    if (entries.length > 0) {
+      setEmissionConfirmation({ mode: 'single', lines: [linea], entries })
+      return
+    }
+    emitirLineaAhora(linea)
+  }
+
+  async function emitirLineaAhora(linea) {
     const nro = siguienteNro(linea)
 
-    setLineaStatus(linea.id, { status: 'emitiendo', nroFactura: null })
+    setLineaStatus(linea.id, {
+      status: 'emitiendo',
+      nroFactura: null,
+      errorCodigo: null,
+      errorMensaje: null,
+    })
 
     try {
       if (linea.tipoFactura === 'LLC') {
@@ -212,8 +231,7 @@ export default function EmisionPage() {
 
   // ── Emitir todo ────────────────────────────────────────────────────────────
 
-  async function handleEmitirTodo() {
-    const candidatas = lineas.filter(l => l.status === 'aprobada')
+  async function emitirTodoAhora(candidatas) {
     if (!candidatas.length) return
 
     setEmitirTodoActivo(true)
@@ -295,14 +313,39 @@ export default function EmisionPage() {
     setSummaryBanner({ emitidas, errores })
   }
 
+  function handleEmitirTodo() {
+    const candidatas = lineas.filter(linea => linea.status === 'aprobada')
+    if (!candidatas.length) return
+
+    const entries = getEmissionWarningEntries({ lines: candidatas, entities })
+    if (entries.length > 0) {
+      setEmissionConfirmation({ mode: 'batch', lines: candidatas, entries })
+      return
+    }
+    emitirTodoAhora(candidatas)
+  }
+
   // ── Reintentar ─────────────────────────────────────────────────────────────
 
-  async function handleReintentar(linea) {
-    setLineaStatus(linea.id, {
-      status: 'aprobada', nroFactura: null,
-      errorCodigo: null, errorMensaje: null,
-    })
-    setTimeout(() => emitirLinea(linea), 100)
+  function handleReintentar(linea) {
+    solicitarEmision(linea)
+  }
+
+  function continueEmission() {
+    const pending = emissionConfirmation
+    setEmissionConfirmation(null)
+    if (!pending) return
+
+    if (pending.mode === 'batch') {
+      emitirTodoAhora(pending.lines)
+      return
+    }
+    emitirLineaAhora(pending.lines[0])
+  }
+
+  function openWarningEntity(entityId) {
+    setEmissionConfirmation(null)
+    navigate(`/administracion/entidad/${entityId}`)
   }
 
   // ── Nueva factura manual ───────────────────────────────────────────────────
@@ -480,7 +523,7 @@ export default function EmisionPage() {
           clientes={CLIENTES_INICIAL}
           servicios={SERVICIOS_INICIAL}
           entidades={entities}
-          onEmitir={emitirLinea}
+          onEmitir={solicitarEmision}
           onReintentar={handleReintentar}
           onVerDetalle={setDrawerLinea}
         />
@@ -507,6 +550,14 @@ export default function EmisionPage() {
           onClose={() => setShowNueva(false)}
         />
       )}
+
+      <EmissionWarningDialog
+        isOpen={Boolean(emissionConfirmation)}
+        entries={emissionConfirmation?.entries || []}
+        onCancel={() => setEmissionConfirmation(null)}
+        onContinue={continueEmission}
+        onOpenEntity={openWarningEntity}
+      />
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Modal from '../components/Modal'
 import EntityFormModal from '../components/Entidades/EntityFormModal'
+import EntityStatusDialog from '../components/Entidades/EntityStatusDialog'
 import { useEntities } from '../context/EntitiesContext'
 import { getArcaStatus } from '../domain/arca'
 import { CLIENTES_INICIAL } from '../data/clientes'
@@ -84,6 +85,12 @@ const ENTITY_ARCA_LABEL = {
   expired: 'Vencido',
   missing: 'Sin cargar',
   not_applicable: 'No aplica',
+}
+
+const ENTITY_STATUS_LABEL = {
+  active: 'Activa',
+  inactive: 'Inactiva',
+  archived: 'Archivada',
 }
 
 function EntityArcaBadge({ entity }) {
@@ -169,6 +176,7 @@ function Badge({ estado }) {
   const up = String(estado).toUpperCase()
   if (up === 'ACTIVO' || up === 'ACTIVA') return <span className="badge badge-activo">{estado}</span>
   if (up === 'INACTIVO' || up === 'INACTIVA') return <span className="badge badge-inactivo">{estado}</span>
+  if (up === 'ARCHIVADO' || up === 'ARCHIVADA') return <span className="badge badge-archivado">{estado}</span>
   if (up === 'PENDIENTE') return <span className="badge badge-pendiente">{estado}</span>
   return <span className="badge">{estado}</span>
 }
@@ -232,7 +240,7 @@ export default function Administracion() {
   const [servicios, setServicios] = useState(SERVICIOS_DATA)
   const [editingServicio, setEditingServicio] = useState(null)
   const [editingManagedEntity, setEditingManagedEntity] = useState(null)
-  const [deactivationTarget, setDeactivationTarget] = useState(null)
+  const [entityStatusAction, setEntityStatusAction] = useState(null)
   const [changingEntityStatus, setChangingEntityStatus] = useState(false)
 
   const [openModal, setOpenModal] = useState(null)
@@ -328,7 +336,7 @@ export default function Administracion() {
     setChangingEntityStatus(true)
     try {
       await setEntityStatus(entity, nextStatus)
-      setDeactivationTarget(null)
+      setEntityStatusAction(null)
       setRowMenuOpen(null)
     } finally {
       setChangingEntityStatus(false)
@@ -349,7 +357,7 @@ export default function Administracion() {
       || rowEmail.toLowerCase().includes(q)
       || rowFiscalId.toLowerCase().includes(q)
       || cuentasStr.toLowerCase().includes(q)
-    const status = r.status === 'active' ? 'Activa' : r.status === 'inactive' ? 'Inactiva' : r.estado
+    const status = r.status ? (ENTITY_STATUS_LABEL[r.status] || r.status) : r.estado
     const matchEstado = !filtroEstado || String(status).toUpperCase() === filtroEstado.toUpperCase()
     return matchSearch && matchEstado
   })
@@ -637,9 +645,9 @@ export default function Administracion() {
           {pageRows.length === 0
             ? <tr><td colSpan={8} className="td-empty">{entitiesLoading ? 'Cargando entidades…' : 'Sin resultados'}</td></tr>
             : pageRows.map(r => (
-              <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/entidades/${r.id}`)}>
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/entidad/${r.id}`)}>
                 <td><span className="link-nro">{r.name}</span></td>
-                <td><Badge estado={r.status === 'active' ? 'Activa' : 'Inactiva'} /></td>
+                <td><Badge estado={ENTITY_STATUS_LABEL[r.status] || r.status} /></td>
                 <td className="td-muted">{ENTITY_TYPE_LABEL[r.legalType]}</td>
                 <td className="td-muted">
                   {r.bankAccounts.length > 0
@@ -659,22 +667,29 @@ export default function Administracion() {
                     onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
                   {rowMenuOpen === r.id && (
                     <div className="row-menu" ref={rowMenuRef} role="menu">
-                      <button className="row-menu-item" role="menuitem" onClick={() => { openManagedEntityForm(r); setRowMenuOpen(null) }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                        Editar
-                      </button>
-                      <button className="row-menu-item" role="menuitem" onClick={() => {
-                        if (r.status === 'active') setDeactivationTarget(r)
-                        else changeManagedEntityStatus(r, 'active').catch(() => {})
-                      }}>
-                        {r.status === 'active'
-                          ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
-                          : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
-                        }
-                      </button>
+                      {r.status !== 'archived' && (
+                        <button className="row-menu-item" role="menuitem" onClick={() => { openManagedEntityForm(r); setRowMenuOpen(null) }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                          Editar
+                        </button>
+                      )}
+                      {r.status === 'archived' ? (
+                        <button className="row-menu-item" role="menuitem" onClick={() => { setEntityStatusAction({ entity: r, action: 'restore' }); setRowMenuOpen(null) }}>
+                          Restaurar
+                        </button>
+                      ) : (
+                        <>
+                          <button className="row-menu-item" role="menuitem" onClick={() => { setEntityStatusAction({ entity: r, action: r.status === 'active' ? 'deactivate' : 'activate' }); setRowMenuOpen(null) }}>
+                            {r.status === 'active' ? 'Desactivar' : 'Activar'}
+                          </button>
+                          <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => { setEntityStatusAction({ entity: r, action: 'archive' }); setRowMenuOpen(null) }}>
+                            Archivar
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </td>
@@ -833,7 +848,7 @@ export default function Administracion() {
       {/* Single toolbar row: filter + search + export + import + NUEVO dropdown */}
       <div className="admin-toolbar">
         <FilterBox id="admin-estado" label="Estado"
-          options={tab === 0 ? ['Activo', 'Inactivo'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva'] : ['Activo', 'Inactivo']}
+          options={tab === 0 ? ['Activo', 'Inactivo'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva', 'Archivada'] : ['Activo', 'Inactivo']}
           value={filtroEstado} onChange={v => { setFiltroEstado(v); setPage(1) }} />
 
         <div className="search-wrap">
@@ -1147,26 +1162,13 @@ export default function Administracion() {
         triggerRef={btnNuevoRef}
       />
 
-      <Modal
-        isOpen={Boolean(deactivationTarget)}
-        onClose={changingEntityStatus ? () => {} : () => setDeactivationTarget(null)}
-        title="DESACTIVAR ENTIDAD"
-        dialogRole="alertdialog"
-        descriptionId="deactivate-entity-description"
-        footer={(
-          <div className="entity-confirm-actions">
-            <button type="button" className="btn-arca-secondary" onClick={() => setDeactivationTarget(null)} disabled={changingEntityStatus}>Cancelar</button>
-            <button type="button" className="btn-guardar ready" disabled={changingEntityStatus}
-              onClick={() => changeManagedEntityStatus(deactivationTarget, 'inactive').catch(() => {})}>
-              {changingEntityStatus ? 'Desactivando…' : 'Desactivar'}
-            </button>
-          </div>
-        )}
-      >
-        <p id="deactivate-entity-description" className="entity-confirm-copy">
-          <strong>{deactivationTarget?.name}</strong> dejará de estar disponible para nuevas facturas. Su historial se conservará.
-        </p>
-      </Modal>
+      <EntityStatusDialog
+        entity={entityStatusAction?.entity || null}
+        action={entityStatusAction?.action || null}
+        busy={changingEntityStatus}
+        onCancel={() => setEntityStatusAction(null)}
+        onConfirm={nextStatus => changeManagedEntityStatus(entityStatusAction.entity, nextStatus).catch(() => {})}
+      />
 
       {/* NUEVO SERVICIO modal — catálogo global (T13) */}
       <Modal isOpen={openModal === 'servicio'} onClose={closeModal} title={editingServicio ? 'EDITAR SERVICIO' : 'NUEVO SERVICIO'} triggerRef={btnNuevoRef}

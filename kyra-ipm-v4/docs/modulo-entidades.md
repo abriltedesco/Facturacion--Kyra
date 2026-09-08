@@ -7,12 +7,22 @@ El módulo administra entidades SRL, monotributistas y LLC con:
 - autenticación interna por usuario y clave;
 - datos fiscales y configuración de comprobantes;
 - una o más cuentas bancarias locales o internacionales;
-- activación y desactivación sin borrado físico;
+- activación, desactivación, archivo reversible y restauración sin borrado físico;
 - certificados ARCA privados, historial, renovación y revocación;
 - numeración y PDFs derivados de la entidad persistida;
 - advertencias no bloqueantes antes de emitir.
 
 La integración real con los servicios de ARCA no forma parte de esta versión. La emisión actual continúa usando el simulador del frontend.
+
+## Uso desde la interfaz
+
+1. Iniciar sesión y abrir `Administración > Entidades`.
+2. Usar `Nueva entidad` para registrar datos fiscales, configuración de comprobantes y cuentas bancarias.
+3. Abrir el menú de una fila para ver el perfil, editar, activar, desactivar o archivar. Una entidad archivada conserva todo su historial y se restaura como inactiva para evitar habilitarla accidentalmente.
+4. En el perfil de una SRL o monotributista, cargar o renovar el certificado ARCA en PDF, consultar su historial, abrirlo, descargarlo o revocarlo. Las entidades archivadas conservan acceso al historial, pero no permiten editar ni cargar documentos hasta ser restauradas.
+5. Al emitir desde `Emisión` o desde la facturación mensual, revisar la advertencia consolidada. Un certificado faltante o vencido, una entidad inactiva o una entidad archivada exige confirmación explícita; un certificado próximo a vencer sólo se informa.
+
+Los cambios de estado y las cargas documentales se confirman en diálogos antes de ejecutar la mutación. Cancelar no modifica la entidad ni una línea de facturación.
 
 ## Arquitectura
 
@@ -71,8 +81,8 @@ Vincular primero el proyecto y revisar la migración antes de aplicarla:
 ```powershell
 npx supabase link --project-ref <project-ref>
 npx supabase db push
-npx supabase functions deploy upload-arca-document
 npx supabase secrets set ALLOWED_ORIGIN=https://ipm.example.com
+npx supabase functions deploy upload-arca-document
 ```
 
 Configurar en el hosting del frontend:
@@ -103,6 +113,7 @@ Como `enable_signup` está desactivado, no existe registro público desde la apl
 - Cada renovación reemplaza el documento actual sin borrar el historial.
 - Abrir o descargar genera una URL firmada por 60 segundos.
 - Revocar conserva metadata y archivo para auditoría.
+- Archivar una entidad deshabilita nuevas ediciones y cargas; restaurarla la deja inactiva.
 
 ## Límites actuales
 

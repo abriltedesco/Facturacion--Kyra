@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Modal from '../components/Modal'
 import EntityFormModal from '../components/Entidades/EntityFormModal'
+import EntityStatusDialog from '../components/Entidades/EntityStatusDialog'
 import { useEntities } from '../context/EntitiesContext'
 import { getArcaStatus } from '../domain/arca'
 
@@ -16,6 +17,12 @@ const VOUCHER_LABEL = {
   B_EXEMPT: 'Factura B - Exento en IVA',
   C: 'Factura C',
   LLC: 'Invoice LLC',
+}
+
+const STATUS_LABEL = {
+  active: 'Activa',
+  inactive: 'Inactiva',
+  archived: 'Archivada',
 }
 
 const ARCA_COPY = {
@@ -68,6 +75,7 @@ export default function EntidadDetallePage() {
     loading,
     error: catalogError,
     saveEntity,
+    setEntityStatus,
     uploadArcaDocument,
     revokeArcaDocument,
     createDocumentUrl,
@@ -83,6 +91,8 @@ export default function EntidadDetallePage() {
   const [documentActionId, setDocumentActionId] = useState(null)
   const [revokeTarget, setRevokeTarget] = useState(null)
   const [revoking, setRevoking] = useState(false)
+  const [statusAction, setStatusAction] = useState(null)
+  const [changingStatus, setChangingStatus] = useState(false)
   const editTriggerRef = useRef(null)
   const uploadTriggerRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -169,6 +179,16 @@ export default function EntidadDetallePage() {
     }
   }
 
+  async function confirmStatus(nextStatus) {
+    setChangingStatus(true)
+    try {
+      await setEntityStatus(entity, nextStatus)
+      setStatusAction(null)
+    } finally {
+      setChangingStatus(false)
+    }
+  }
+
   if (loading) {
     return <div className="entity-detail-state" role="status">Cargando entidad…</div>
   }
@@ -197,14 +217,30 @@ export default function EntidadDetallePage() {
         <div>
           <div className="entity-detail-heading-row">
             <h1>{entity.name}</h1>
-            <span className={`badge ${entity.status === 'active' ? 'badge-activo' : 'badge-inactivo'}`}>
-              {entity.status === 'active' ? 'Activa' : 'Inactiva'}
+            <span className={`badge ${entity.status === 'active' ? 'badge-activo' : entity.status === 'archived' ? 'badge-archivado' : 'badge-inactivo'}`}>
+              {STATUS_LABEL[entity.status] || entity.status}
             </span>
           </div>
           <p>{TYPE_LABEL[entity.legalType]} · {entity.fiscalIdType} {entity.fiscalId}</p>
         </div>
-        <button ref={editTriggerRef} type="button" className="btn-arca-secondary" onClick={() => setEditOpen(true)}>Editar datos</button>
+        <div className="entity-detail-actions">
+          {entity.status !== 'archived' && (
+            <button ref={editTriggerRef} type="button" className="btn-arca-secondary" onClick={() => setEditOpen(true)}>Editar datos</button>
+          )}
+          {entity.status === 'archived' ? (
+            <button type="button" className="btn-arca-secondary" onClick={() => setStatusAction('restore')}>Restaurar</button>
+          ) : (
+            <>
+              <button type="button" className="btn-arca-secondary" onClick={() => setStatusAction(entity.status === 'active' ? 'deactivate' : 'activate')}>
+                {entity.status === 'active' ? 'Desactivar' : 'Activar'}
+              </button>
+              <button type="button" className="btn-arca-secondary entity-detail-archive" onClick={() => setStatusAction('archive')}>Archivar</button>
+            </>
+          )}
+        </div>
       </header>
+
+      {catalogError && <div className="admin-data-error" role="alert">{catalogError}</div>}
 
       <div className="entity-detail-grid">
         <section className="entity-detail-panel entity-detail-data" aria-labelledby="entity-data-title">
@@ -234,7 +270,7 @@ export default function EntidadDetallePage() {
             <strong>{arcaCopy.title}</strong>
             <p>{arcaCopy.detail}</p>
           </div>
-          {arcaStatus !== 'not_applicable' && (
+          {arcaStatus !== 'not_applicable' && entity.status !== 'archived' && (
             <button ref={uploadTriggerRef} type="button" className="btn-arca-primary" onClick={() => setUploadOpen(true)}>
               {currentDocument ? 'Renovar certificado' : 'Cargar certificado'}
             </button>
@@ -310,6 +346,14 @@ export default function EntidadDetallePage() {
 
       <EntityFormModal isOpen={editOpen} entity={entity} onClose={() => setEditOpen(false)}
         onSave={saveEntity} onSaved={() => setEditOpen(false)} triggerRef={editTriggerRef} />
+
+      <EntityStatusDialog
+        entity={statusAction ? entity : null}
+        action={statusAction}
+        busy={changingStatus}
+        onCancel={() => setStatusAction(null)}
+        onConfirm={nextStatus => confirmStatus(nextStatus).catch(() => {})}
+      />
 
       <Modal isOpen={uploadOpen} onClose={closeUpload} title={currentDocument ? 'RENOVAR CERTIFICADO' : 'CARGAR CERTIFICADO'}
         triggerRef={uploadTriggerRef} initialFocusRef={fileButtonRef}

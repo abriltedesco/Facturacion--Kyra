@@ -40,3 +40,26 @@ export function getEmissionWarnings({ entity, voucherType, currency }, now = new
 
   return warnings
 }
+
+export function getEmissionWarningEntries({ lines, entities, now = new Date() }) {
+  const entitiesById = new Map(entities.map(entity => [String(entity.id), entity]))
+
+  return lines.flatMap(line => {
+    const entity = entitiesById.get(String(line.entidadId)) || null
+    const warnings = getEmissionWarnings({
+      entity,
+      voucherType: line.tipoFactura,
+      currency: line.moneda || 'ARS',
+    }, now).filter(item => item.code !== 'arca_expiring')
+
+    if (warnings.length === 0) return []
+
+    return [{
+      lineId: line.id,
+      entityId: entity?.id || null,
+      entityName: entity?.name || `Entidad ${line.entidadId || 'sin asignar'}`,
+      voucherType: line.tipoFactura,
+      warnings,
+    }]
+  })
+}

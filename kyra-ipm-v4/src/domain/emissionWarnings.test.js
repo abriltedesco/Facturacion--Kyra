@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getEmissionWarnings } from './emissionWarnings'
+import { getEmissionWarningEntries, getEmissionWarnings } from './emissionWarnings'
 
 const now = new Date('2026-08-18T12:00:00Z')
 
@@ -52,5 +52,46 @@ describe('advertencias de emisión', () => {
   it('advierte cuando no puede resolver la entidad', () => {
     expect(getEmissionWarnings({ entity: null, voucherType: 'A', currency: 'ARS' }, now))
       .toEqual([{ code: 'entity_missing', message: 'No se encontró la entidad emisora.', blocking: false }])
+  })
+
+  it('resume sólo las líneas observadas para una confirmación individual o en lote', () => {
+    const validEntity = entity({ id: 1, name: 'Kyra SRL' })
+    const expiredEntity = entity({
+      id: 2,
+      name: 'Mai',
+      legalType: 'monotributista',
+      currentArcaDocument: { expirationDate: '2026-08-01' },
+    })
+
+    expect(getEmissionWarningEntries({
+      lines: [
+        { id: 10, entidadId: 1, tipoFactura: 'A', moneda: 'ARS' },
+        { id: 11, entidadId: 2, tipoFactura: 'C', moneda: 'ARS' },
+      ],
+      entities: [validEntity, expiredEntity],
+      now,
+    })).toEqual([
+      {
+        lineId: 11,
+        entityId: 2,
+        entityName: 'Mai',
+        voucherType: 'C',
+        warnings: [{ code: 'arca_expired', message: 'El certificado ARCA está vencido.', blocking: false }],
+      },
+    ])
+  })
+
+  it('mantiene el certificado por vencer como aviso visible sin pedir confirmación', () => {
+    const expiringEntity = entity({
+      id: 3,
+      name: 'Kyra SRL',
+      currentArcaDocument: { expirationDate: '2026-09-10' },
+    })
+
+    expect(getEmissionWarningEntries({
+      lines: [{ id: 12, entidadId: 3, tipoFactura: 'A', moneda: 'ARS' }],
+      entities: [expiringEntity],
+      now,
+    })).toEqual([])
   })
 })

@@ -345,6 +345,7 @@ html, body, #root {
 .entity-confirm-copy { color: var(--gray-600); line-height: 1.6; }
 .entity-confirm-copy strong { color: var(--black); }
 .entity-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+.entity-danger-button { background: #8E1111 !important; border-color: #8E1111 !important; }
 
 @media (max-width: 640px) {
   .entity-form-grid-2 { grid-template-columns: 1fr; }
@@ -1706,6 +1707,7 @@ button.toggle.on .toggle
 /* ─── Badge activo / inactivo (solid override) ─── */
 .badge-activo   { background: var(--gray-800); color: var(--white); }
 .badge-inactivo { background: var(--gray-300); color: var(--gray-600); }
+.badge-archivado { background: #FCE1E1; color: #8E1111; }
 
 /* ═══════════════════════════════════════════════════════════
    PAGE-HEADER PATTERN (title + CTA on same row)
@@ -3492,6 +3494,8 @@ button.toggle.on .toggle
 .entity-detail-heading-row { display: flex; align-items: center; gap: 12px; }
 .entity-detail-header h1 { font-family: var(--font-serif); font-size: 42px; font-weight: 400; line-height: 1; }
 .entity-detail-header p { color: var(--gray-500); font-size: 12px; margin-top: 9px; }
+.entity-detail-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.entity-detail-archive { color: #8E1111; }
 .entity-detail-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); gap: 20px; }
 .entity-detail-panel { border-top: 2px solid var(--black); padding-top: 16px; }
 .entity-detail-panel-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
@@ -3546,6 +3550,16 @@ button.toggle.on .toggle
 .emission-warning-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
 .emission-warning-panel ul { margin: 8px 0 0 18px; font-size: 12px; line-height: 1.55; }
 .emission-warning-panel p { margin-top: 8px; color: #8A6A2A; font-size: 10px; }
+.emission-warning-dialog { width: min(640px, calc(100vw - 32px)); }
+.emission-warning-intro { margin: 0; color: var(--gray-600); font-size: 13px; line-height: 1.6; }
+.emission-warning-list { display: flex; flex-direction: column; gap: 10px; max-height: min(48vh, 420px); overflow-y: auto; }
+.emission-warning-item { border: 1px solid #E8C56A; border-radius: 6px; background: #FFFCF3; padding: 12px 14px; }
+.emission-warning-item-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.emission-warning-item-heading div { display: flex; flex-direction: column; gap: 2px; }
+.emission-warning-item-heading strong { color: var(--black); font-size: 13px; }
+.emission-warning-item-heading span { color: #8A6A2A; font-size: 10px; text-transform: uppercase; }
+.emission-warning-item-heading button { border: 0; background: none; color: var(--gray-700); cursor: pointer; font: inherit; font-size: 11px; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.emission-warning-item ul { margin: 9px 0 0 18px; color: #6E4800; font-size: 12px; line-height: 1.55; }
 
 @media (max-width: 820px) {
   .entity-detail-grid { grid-template-columns: 1fr; }
