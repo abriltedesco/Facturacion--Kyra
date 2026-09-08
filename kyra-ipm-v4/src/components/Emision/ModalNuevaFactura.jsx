@@ -3,6 +3,7 @@
 // Navegación entre secciones con flechas. Validación inline.
 
 import { useState } from 'react'
+import { getAllowedVoucherTypes } from '../../domain/entityRules'
 
 const SECCIONES = ['CLIENTE / SERVICIO', 'IMPORTES', 'FACTURA']
 
@@ -90,6 +91,22 @@ export default function ModalNuevaFactura({ clientes, servicios, entidades, onGu
     : Number(form.montoBase) || 0
   const impuesto    = Number(form.impuesto) || 0
   const importeBruto = importeNeto + impuesto
+  const selectedEntity = entidades.find(entity => String(entity.id) === String(form.entidadId))
+  const allowedVoucherTypes = selectedEntity
+    ? getAllowedVoucherTypes(selectedEntity).map(type => type === 'B_EXEMPT' ? 'B' : type)
+    : []
+
+  function setEntity(entityId) {
+    const entity = entidades.find(item => String(item.id) === String(entityId))
+    const defaultVoucher = entity?.defaultVoucher === 'B_EXEMPT' ? 'B' : entity?.defaultVoucher
+    setForm(current => ({
+      ...current,
+      entidadId: entityId,
+      tipoFactura: defaultVoucher || '',
+      moneda: entity?.legalType === 'llc' ? 'USD' : current.moneda,
+    }))
+    if (submitted) setErrors(current => ({ ...current, entidadId: undefined, tipoFactura: undefined }))
+  }
 
   function validar() {
     const e = {}
@@ -97,6 +114,9 @@ export default function ModalNuevaFactura({ clientes, servicios, entidades, onGu
     if (!form.servicioId)   e.servicioId  = 'Requerido'
     if (!form.entidadId)    e.entidadId   = 'Requerido'
     if (!form.tipoFactura)  e.tipoFactura = 'Requerido'
+    if (selectedEntity && form.tipoFactura !== 'S' && !allowedVoucherTypes.includes(form.tipoFactura)) {
+      e.tipoFactura = 'El comprobante no corresponde a la entidad.'
+    }
     if (!form.moneda)       e.moneda      = 'Requerido'
     if (!importeNeto)       e.montoBase   = 'Ingresá monto base o horas + tarifa'
     return e
@@ -206,19 +226,19 @@ export default function ModalNuevaFactura({ clientes, servicios, entidades, onGu
               </Field>
 
               <Field label="Entidad emisora *" error={errors.entidadId}>
-                <Select value={form.entidadId} onChange={v => set('entidadId', v)}>
+                <Select value={form.entidadId} onChange={setEntity}>
                   <option value="">— Seleccioná —</option>
-                  {entidades.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                  {entidades.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
                 </Select>
               </Field>
 
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <Field label="Tipo factura *" error={errors.tipoFactura}>
                   <Select value={form.tipoFactura} onChange={v => set('tipoFactura', v)}>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="LLC">LLC</option>
+                    {!selectedEntity && <option value="">— Seleccioná entidad —</option>}
+                    {allowedVoucherTypes.map(type => (
+                      <option value={type} key={type}>{type === 'LLC' ? 'Invoice LLC' : `Factura ${type}`}</option>
+                    ))}
                     <option value="S">S/F</option>
                   </Select>
                 </Field>

@@ -3,42 +3,38 @@
 // Se usan con useRef en EmisionPage para evitar stale closures.
 
 export const CONTADORES_INICIAL = {
-  kyra_srl_A:    131,  // próximo: 0001-00000132
-  kyra_srl_B:    3,    // próximo: 0001-00000004
-  kyra_srl_C:    3,    // próximo: 0002-00000004  (monotributo usa punto de venta 2)
-  mercury_llc:   41,   // próximo: INV-2026-042
-  sf_interno:    7,    // próximo: S/F-0008
+  entity_1_A:   131,
+  entity_1_B:   3,
+  entity_2_C:   3,
+  entity_3_LLC: 41,
+  sf_interno:   7,
 }
 
 /**
- * Devuelve la clave del contador para un tipo de factura + entidadId.
- * entidadId: 1 = Kyra SRL, 2 = Monotributo, 3 = Mercury LLC
+ * Devuelve una clave independiente por entidad y tipo de comprobante.
  */
-export function claveContador(tipoFactura, entidadId) {
-  if (tipoFactura === 'LLC') return 'mercury_llc'
+export function claveContador(tipoFactura, entidad) {
   if (tipoFactura === 'S' || tipoFactura === 'F') return 'sf_interno'
-  if (entidadId === 2) return 'kyra_srl_C'
-  if (tipoFactura === 'B') return 'kyra_srl_B'
-  return 'kyra_srl_A'
+  const entidadId = typeof entidad === 'object' ? entidad?.id : entidad
+  if (entidadId == null || entidadId === '') throw new Error('La entidad emisora es obligatoria para numerar.')
+  return `entity_${entidadId}_${tipoFactura}`
 }
 
 /**
  * Formatea número de factura AFIP estilo "0001-00000132"
  * puntoVenta: string de 4 dígitos con ceros
  */
-export function formatNroFacturaAFIP(contador, tipoFactura, entidadId) {
+export function formatNroFacturaAFIP(contador, puntoVenta = '0001') {
   const num = String(contador).padStart(8, '0')
-  // Monotributo usa punto de venta 0002
-  const pv = entidadId === 2 ? '0002' : '0001'
-  return `${pv}-${num}`
+  return `${String(puntoVenta).padStart(4, '0')}-${num}`
 }
 
 /**
  * Formatea número de invoice LLC estilo "INV-2026-042"
  */
-export function formatNroInvoiceLLC(contador) {
+export function formatNroInvoiceLLC(contador, prefijo = 'INV', anio = new Date().getFullYear()) {
   const num = String(contador).padStart(3, '0')
-  return `INV-2026-${num}`
+  return `${prefijo}-${anio}-${num}`
 }
 
 /**
@@ -53,8 +49,14 @@ export function formatNroSF(contador) {
  * Genera el número de factura completo para una línea.
  * Usa el valor ACTUAL del contador (ya incrementado antes de llamar aquí).
  */
-export function generarNroFactura(contador, tipoFactura, entidadId) {
-  if (tipoFactura === 'LLC') return formatNroInvoiceLLC(contador)
+export function generarNroFactura(contador, tipoFactura, entidad, anio = new Date().getFullYear()) {
+  if (tipoFactura === 'LLC') {
+    const prefijo = typeof entidad === 'object' ? entidad?.invoicePrefix : 'INV'
+    return formatNroInvoiceLLC(contador, prefijo || 'INV', anio)
+  }
   if (tipoFactura === 'S' || tipoFactura === 'F') return formatNroSF(contador)
-  return formatNroFacturaAFIP(contador, tipoFactura, entidadId)
+  const puntoVenta = typeof entidad === 'object'
+    ? entidad?.pointOfSale
+    : entidad === 2 ? '0002' : '0001'
+  return formatNroFacturaAFIP(contador, puntoVenta || '0001')
 }
