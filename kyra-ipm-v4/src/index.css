@@ -2256,7 +2256,10 @@ button.toggle.on .toggle
 /* ═══════════════════════════════════════════════════════════
    DASHBOARD PAGE
    ═══════════════════════════════════════════════════════════ */
-.dashboard-page { }
+.dashboard-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
 
 /* Top 3-col grid */
 .dash-top-grid {
@@ -2383,7 +2386,7 @@ button.toggle.on .toggle
 /* Charts row */
 .dash-charts-row {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr 320px;
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -2439,6 +2442,29 @@ button.toggle.on .toggle
 .donut-leg-light { background: var(--gray-300); }
 .donut-leg-label { font-size: 11px; color: var(--gray-500); }
 .donut-leg-val   { font-size: 13px; font-weight: 600; color: var(--black); }
+
+/* Donut chart card specific styling */
+.dash-chart-donut {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 18px 14px 18px;
+}
+.dash-chart-donut .dash-donut-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 0;
+  min-height: 200px;
+}
+.dash-chart-donut .dash-donut-wrap svg {
+  width: 240px;
+  height: 240px;
+}
+.dash-chart-donut .dash-donut-legend {
+  margin-top: 0;
+  padding-top: 10px;
+}
 
 /* Bottom row */
 .dash-bottom-row {
