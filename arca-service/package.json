@@ -10,9 +10,12 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "migrate": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "migrate": "node-pg-migrate up -m db/migrations --envPath .env",
+    "migrate:down": "node-pg-migrate down -m db/migrations --envPath .env",
     "seed": "node db/seed.mjs",
+    "reset": "node-pg-migrate down 0 -m db/migrations --envPath .env && node-pg-migrate up -m db/migrations --envPath .env && node db/seed.mjs",
     "test": "vitest run"
   },
   "dependencies": {
