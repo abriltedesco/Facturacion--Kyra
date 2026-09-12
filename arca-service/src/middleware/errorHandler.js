@@ -3,6 +3,8 @@
 // The frontend repositories key on `error` (SQLSTATE codes like 23505/40001, or
 // string codes like INVALID_FISCAL_ID / PGRST116), so that value must be preserved.
 
+import { isPgError, pgErrorStatus } from '../lib/pgError.js'
+
 export class AppError extends Error {
   constructor(code, message, status = 400) {
     super(message || code)
@@ -16,6 +18,11 @@ export class AppError extends Error {
 export function errorHandler(err, req, res, next) {
   if (err instanceof AppError) {
     return res.status(err.status).json({ error: err.code, message: err.message })
+  }
+
+  // Raw errors bubbled up from `pg` (the ported RPCs, or a raw query) — SQLSTATE-coded.
+  if (isPgError(err)) {
+    return res.status(pgErrorStatus(err.code)).json({ error: err.code, message: err.message })
   }
 
   // Multer / body parsing errors
