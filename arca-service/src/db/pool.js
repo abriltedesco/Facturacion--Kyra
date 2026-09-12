@@ -12,19 +12,22 @@ pg.types.setTypeParser(pg.types.builtins.INT8, value => (value === null ? null :
 // precision. Postgres stores microseconds, and the optimistic-lock RPCs
 // (save_billing_entity, set_client_status, ...) compare `updated_at` for exact
 // equality — round-tripping through Date silently truncates it and every save
-// would look like a stale-version conflict. So: force the session to UTC (see
-// pool.on('connect') below) and parse timestamptz as a plain ISO-8601 *string*
-// (like PostgREST/Supabase did), keeping full precision, no Date involved.
+// would look like a stale-version conflict. So: force every connection's session
+// to UTC (via the libpq startup option below, not a follow-up query — a
+// pool.on('connect') query races the first real query on that same client) and
+// parse timestamptz as a plain ISO-8601 *string* (like PostgREST/Supabase did),
+// keeping full precision, no Date involved.
 pg.types.setTypeParser(pg.types.builtins.TIMESTAMPTZ, value => {
   if (value === null) return null
   const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)\+00$/.exec(value)
   return match ? `${match[1]}T${match[2]}Z` : value
 })
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl })
-
-pool.on('connect', client => {
-  client.query("SET TIME ZONE 'UTC'").catch(err => console.error('Failed to set session time zone', err))
+export const pool = new pg.Pool({
+  connectionString: config.databaseUrl,
+  // Sets the session's TimeZone as part of the connection handshake itself,
+  // so it's guaranteed to be in effect before any query runs on the client.
+  options: '-c TimeZone=UTC',
 })
 
 pool.on('error', err => {

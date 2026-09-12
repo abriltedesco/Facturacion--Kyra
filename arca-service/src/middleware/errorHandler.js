@@ -29,6 +29,9 @@ export function errorHandler(err, req, res, next) {
   if (err && err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE', message: 'El archivo supera el tamaño permitido.' })
   }
+  if (err && err.name === 'MulterError') {
+    return res.status(400).json({ error: 'INVALID_FILE_SIZE', message: 'El archivo debe pesar entre 1 byte y 10 MB.' })
+  }
 
   console.error('Unhandled error:', err)
   return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' })
