@@ -6,6 +6,8 @@ import { config } from './config.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 import { authRouter } from './routes/auth.js'
 import { entitiesRouter } from './routes/entities.js'
+import { clientsRouter } from './routes/clients.js'
+import { catalogsRouter } from './routes/catalogs.js'
 import { filesRouter } from './routes/files.js'
 import { authMiddleware } from './middleware/authMiddleware.js'
 
@@ -22,11 +24,9 @@ export function createApp() {
 
   app.use('/auth', authRouter)
   app.use('/entities', authMiddleware, entitiesRouter)
+  app.use('/clients', authMiddleware, clientsRouter)
+  app.use(authMiddleware, catalogsRouter) // /countries, /fiscal-conditions, /tax-categories
   app.use('/files', filesRouter)
-
-  // Routers are mounted here in later phases:
-  //   app.use('/clients', authMiddleware, clientsRouter)
-  //   app.use(catalogsRouter) // /countries, /fiscal-conditions, /tax-categories
 
   app.use(notFoundHandler)
   app.use(errorHandler)
