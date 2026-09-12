@@ -9,6 +9,7 @@ import { entitiesRouter } from './routes/entities.js'
 import { clientsRouter } from './routes/clients.js'
 import { catalogsRouter } from './routes/catalogs.js'
 import { filesRouter } from './routes/files.js'
+import { billingRouter } from './routes/billing.js'
 import { authMiddleware } from './middleware/authMiddleware.js'
 
 export function createApp() {
@@ -26,6 +27,7 @@ export function createApp() {
   app.use('/entities', authMiddleware, entitiesRouter)
   app.use('/clients', authMiddleware, clientsRouter)
   app.use(authMiddleware, catalogsRouter) // /countries, /fiscal-conditions, /tax-categories
+  app.use('/billing', authMiddleware, billingRouter)
   app.use('/files', filesRouter)
 
   app.use(notFoundHandler)
