@@ -1,5 +1,11 @@
 # arca-service — Phase 2 handoff
 
+> **Status: done.** Everything described below as a plan has been implemented —
+> `arca-service` is the only backend, Supabase is fully removed. See
+> [`README.md`](../README.md) for how to run it and what changed. The one thing still
+> outstanding is WSAA/WSFE emission itself (see the bottom of this doc), unchanged
+> because the fiscal definitions it depends on haven't arrived yet.
+
 ## Where things stand (Phase 1, done)
 
 - New standalone microservice at `arca-service/` (sibling of `kyra-ipm-v4/`).
