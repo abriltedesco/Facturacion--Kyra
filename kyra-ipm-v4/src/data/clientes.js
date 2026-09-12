@@ -1,7 +1,7 @@
 // /src/data/clientes.js
 // Mock data de los clientes activos de Kyra.
 // No hay backend — este array es la fuente de verdad para el frontend.
-// entidadEmisoraId referencia las entidades 1-3 del seed local de Supabase.
+// entidadEmisoraId referencia las entidades 1-3 del seed local de arca-service.
 //
 // emailConfig.plantillaId: null = usar plantilla default del configEnvioEmail
 // emailConfig.envioAutomatico: controla si este cliente recibe envío automático
