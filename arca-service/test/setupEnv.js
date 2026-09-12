@@ -9,3 +9,10 @@ process.env.COOKIE_NAME = 'arca_session'
 process.env.COOKIE_SECURE = 'false'
 process.env.STORAGE_DIR = './test/.tmp-storage'
 process.env.SIGNED_LINK_SECRET = 'test-signed-link-secret'
+// Deliberately NOT setting CUIT/CERT_PATH/KEY_PATH: no real AFIP credentials exist
+// in this environment, so src/services/afip.js's real getAfip() must keep failing
+// with AFIP_NOT_CONFIGURED (see test/billing.test.js). WSFE_PUNTO_VENTA *is* set
+// so generateInvoice() can be exercised past that one checkpoint when a fake
+// `afip` is injected directly (see test/invoice-emission.test.js) — a sales point
+// number isn't a secret, unlike the cert/key.
+process.env.WSFE_PUNTO_VENTA = '1'

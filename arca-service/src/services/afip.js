@@ -8,6 +8,7 @@ import Afip from '@afipsdk/afip.js'
 import { config } from '../config.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../middleware/errorHandler.js'
+import { recordInvoice } from './invoices.js'
 
 const CBTE_TIPO_FACTURA_A = 1 // Receiver is Responsable Inscripto
 const CBTE_TIPO_FACTURA_B = 6 // Any other domestic fiscal condition
@@ -123,10 +124,15 @@ function mapAfipError(err) {
 /**
  * Emits a domestic WSFE invoice (Factura A or B) for an existing client.
  *
- * @param {{ clientId: number, totalAmount: number }} params `totalAmount` is
- *   VAT-inclusive (21%).
+ * @param {{ clientId: number, totalAmount: number, actorId?: string }} params
+ *   `totalAmount` is VAT-inclusive (21%). `actorId` (a users.id) is recorded as
+ *   invoices.created_by when set.
+ * @param {{ afip?: object }} [deps] Test-only seam: pass a fake with an
+ *   `ElectronicBilling.{getLastVoucher,createVoucher}` shape to exercise this
+ *   function without real AFIP credentials or a network call. Defaults to the
+ *   real, lazily-constructed Afip instance.
  */
-export async function generateInvoice({ clientId, totalAmount }) {
+export async function generateInvoice({ clientId, totalAmount, actorId } = {}, deps = {}) {
   const parsedClientId = Number(clientId)
   if (!Number.isInteger(parsedClientId) || parsedClientId <= 0) {
     throw new AppError('INVALID_CLIENT_ID', 'clientId es requerido y debe ser un entero positivo.', 400)
@@ -160,7 +166,7 @@ export async function generateInvoice({ clientId, totalAmount }) {
   const docNro = Number(client.fiscal_id.replace(/\D/g, ''))
   const today = todayAfipDate()
 
-  const afip = getAfip()
+  const afip = deps.afip || getAfip()
 
   let voucherNumber
   let result
@@ -196,7 +202,37 @@ export async function generateInvoice({ clientId, totalAmount }) {
     throw mapAfipError(err)
   }
 
+  // AFIP has now issued this CAE — it exists whether or not we manage to record
+  // it locally. So persistence failure is logged loudly but never turned into an
+  // error response (that would make the caller think emission failed and retry,
+  // creating a second, real, billable voucher for the same request).
+  let invoiceId = null
+  let persisted = true
+  try {
+    const saved = await recordInvoice({
+      clientId: parsedClientId,
+      cbteTipo,
+      puntoVenta,
+      voucherNumber,
+      concepto: CONCEPTO_SERVICIOS,
+      netAmount,
+      vatAmount,
+      totalAmount: amount,
+      cae: result.CAE,
+      caeExpirationDate: result.CAEFchVto,
+      actorId,
+    })
+    invoiceId = saved.id
+  } catch (err) {
+    persisted = false
+    console.error(
+      'ARCA issued a CAE but arca-service failed to record it locally — reconcile manually:',
+      { clientId: parsedClientId, puntoVenta, cbteTipo, voucherNumber, cae: result.CAE, error: err.message },
+    )
+  }
+
   return {
+    id: invoiceId,
     cae: result.CAE,
     caeExpirationDate: result.CAEFchVto,
     puntoVenta,
@@ -205,5 +241,6 @@ export async function generateInvoice({ clientId, totalAmount }) {
     netAmount,
     vatAmount,
     totalAmount: amount,
+    persisted,
   }
 }
