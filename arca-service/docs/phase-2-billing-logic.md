@@ -78,6 +78,35 @@ reads or acts on them beyond storing/displaying.
 4. **No international billing in this system.** Mercury LLC (the `llc`/US/EIN entity)
    stays completely outside WSFE/ARCA logic — Phase 2 only ever touches AR entities.
 
-## Status
+## Status (2026-09-13)
 
-Brief confirmed, no Phase 2 code written yet.
+Implemented and tested (46/46 in `npm test`), pushed to `origin/feat/arca-service`:
+
+- `src/services/afip.js` — `generateInvoice({ clientId, totalAmount, actorId }, { afip })`.
+  Picks CbteTipo from the client's fiscal condition (rule 2), rejects non-AR clients
+  before that (rule 4), reads `WSFE_PUNTO_VENTA` (rule 3), computes net/VAT assuming
+  21%-inclusive `totalAmount`. The `{ afip }` second argument is a test-only DI seam
+  (see below).
+- `src/routes/billing.js` — `POST /billing/invoice`, `GET /billing/invoices?clientId=`.
+- `db/migrations/20260912000000_invoices.sql` — local audit trail for every emitted
+  CAE (AFIP stays the source of truth for the CAE itself). Unique constraint on
+  `(punto_venta, cbte_tipo, voucher_number)`. Applied to both `arca` and `arca_test`.
+- Tests: `test/afip.unit.test.js` (pure CbteTipo/VAT logic, no DB), `test/billing.test.js`
+  (route guard clauses up to `AFIP_NOT_CONFIGURED`), `test/invoice-emission.test.js`
+  (full happy path incl. persistence, against a **fake** AFIP client injected via
+  `generateInvoice(params, { afip: fake })` — see that file for the shape).
+
+**Not done, needs a real AFIP cert:**
+- No real WSFE call has ever been made — `CUIT`/`CERT_PATH`/`KEY_PATH` are unset in
+  every environment here (no certificate exists on this machine). Everything above
+  is verified up to that boundary only.
+- Nothing in `kyra-ipm-v4` (the frontend) calls `/billing/invoice` yet.
+
+**Known fragility, not yet addressed:** `determineCbteTipo()` matches on
+`fiscal_conditions.name` text (`"responsable inscripto"`, case/trim-insensitive).
+That catalog row is editable via the existing `save_fiscal_condition` RPC/admin UI —
+renaming it would silently misroute every invoice to Factura B. No blocking constraint
+exists on it today.
+
+Commits: `99ae81d` (emission), `017ad8f` (persistence + testability). Both on
+`feat/arca-service`, pushed to GitHub, not merged to `main`.
