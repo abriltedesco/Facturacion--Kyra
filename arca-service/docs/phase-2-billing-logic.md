@@ -207,44 +207,53 @@ machine. To test the real path, ask the supervisor for:
   CUIT, authorized for the "Facturación Electrónica" / WSFE web service specifically.
   These go on disk (never committed — see `arca-service/.gitignore`) and are pointed
   to by the `CERT_PATH` / `KEY_PATH` env vars.
-- **Which AFIP environment to test against**: homologación (AFIP's sandbox, safe to
-  throw test invoices at) vs. producción (real, counts as a real legal invoice with
-  no undo — see the fragility note above about Notas de Crédito being the only
-  correction path). Homologación should come first regardless.
-- **The WSFE Punto de Venta number** — see the next section for what this actually is
-  and why it's a separate question from the certificate.
+- **The WSFE Punto de Venta number** — see the next section for what this actually is,
+  why it's a separate question from the certificate, and why it may not exist yet.
 
-None of the four above exist in this environment yet. Until they do, `POST
+The homologación-vs-producción question (AFIP's sandbox vs. the real, no-undo
+environment) is NOT something to ask the supervisor — it's an engineering default,
+not a business decision: test in homologación first, regardless, before producción is
+even considered.
+
+None of the three above exist in this environment yet. Until they do, `POST
 /billing/invoice` will keep stopping cleanly at `AFIP_NOT_CONFIGURED` — which is
 correct, expected behavior, not a bug.
 
-### "Punto de Venta" — explained
+### "Punto de Venta" — explained, and status unknown
 An AFIP "Punto de Venta" (POV) is a numbered sales point that a company registers
 with AFIP before it's allowed to emit invoices through it. It's not something the
 software invents — it's a number that exists in AFIP's own records for Kyra SRL's
 CUIT, and every invoice number AFIP hands out is scoped to one specific POV (POV 1's
 invoice #1, #2, #3... is a completely separate sequence from POV 2's invoice #1, #2...).
 
-The reason it matters here: a single company can have *multiple* POVs registered for
-different purposes — e.g. one for a physical point-of-sale/manual invoice book, and a
-separate one specifically authorized for "Comprobantes en línea" (the type of POV
-required for WSFE, the web-service API this system uses). They are not
-interchangeable — AFIP will reject a WSFE call made with a POV number that wasn't
-registered as a web-service POV, even if that number is valid for some other purpose.
+The reason it matters here: in AFIP, each POV is registered under exactly one
+"modalidad" (RECE / Comprobantes en línea, Facturador Plus, a physical
+controlador fiscal, etc.) and can't mix modalities. WSFE — the web-service API this
+system uses — requires a POV registered specifically as "Comprobantes en línea".
+A POV Kyra already uses for something else (manual invoicing, a different system)
+is not automatically valid for WSFE, even though it's a real, active POV for AFIP.
+
+**As of 2026-09-15, it's genuinely unknown whether Kyra SRL has a POV registered
+under "Comprobantes en línea" at all** — Fran doesn't have that information, and it
+hasn't been asked yet. This is the actual open question, not just "what's the
+number": whether one exists has to be checked before a number can even be provided.
 
 The open problem flagged in this repo: `billing_entities` already stores a
 `point_of_sale` value per entity (used elsewhere, e.g. shown in the Administración
 UI), and separately there's a `WSFE_PUNTO_VENTA` env var that `arca-service` actually
-uses when calling AFIP. Nobody has confirmed whether these are supposed to be the
-*same* number or genuinely different ones — the code deliberately does NOT assume
-they match (see `src/config.js`), because guessing wrong here would mean invoices
-either get rejected by AFIP or numbered under the wrong POV with no easy fix.
+uses when calling AFIP. The code deliberately does NOT assume these are the same
+number (see `src/config.js`) — for exactly the modalidad reason above: the POV
+already on the entity row was very possibly registered for a different modalidad, so
+treating it as the WSFE POV without checking could get every real call rejected by
+AFIP, or worse, accepted under the wrong POV with no easy fix.
 
-**What to ask the supervisor:** "What is the Punto de Venta number AFIP has
-registered for Kyra SRL under 'Facturación Electrónica – Comprobantes en línea'
-specifically?" That number is what goes into `WSFE_PUNTO_VENTA` — separately from,
-and not necessarily equal to, whatever `point_of_sale` is already saved on the Kyra
-SRL entity row today.
+**What this means in practice:** the supervisor needs to check AFIP's own site
+(within "Administrador de Relaciones" → "Puntos de Venta y Domicilios", under the
+Facturación Electrónica service) for a POV listed with modalidad "Comprobantes en
+línea" for Kyra SRL's CUIT. If one exists, its number is what goes into
+`WSFE_PUNTO_VENTA`. If none exists, a new POV has to be registered there with that
+modalidad before WSFE testing can start at all — that's a prerequisite step, not
+something this codebase can work around.
 
 ### Security — single admin user (reaffirmed)
 Fran confirmed the target shape directly: the system will have exactly one user, and
