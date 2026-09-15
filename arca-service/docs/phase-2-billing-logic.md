@@ -219,6 +219,33 @@ None of the three above exist in this environment yet. Until they do, `POST
 /billing/invoice` will keep stopping cleanly at `AFIP_NOT_CONFIGURED` — which is
 correct, expected behavior, not a bug.
 
+No separate "AFIP access token" needs to be requested from anyone: AFIP's own login
+step (WSAA, a short-lived ~12h ticket) is obtained automatically by the code from the
+cert + key above — that's the whole purpose of the certificate. CUIT + cert/key + a
+confirmed Punto de Venta is the complete list of what real WSFE calls need.
+
+### `@afipsdk/afip.js` proxies through a third party — worth knowing before testing with real credentials
+Found 2026-09-15 reading the library this code depends on
+([`src/services/afip.js`](../src/services/afip.js), package `@afipsdk/afip.js`): it
+does not talk to AFIP directly. Every call — including the WSAA login step — is sent
+to AfipSDK's own server (`https://app.afipsdk.com/api/`, a third-party company, not
+AFIP) via `Afip.prototype.GetServiceTA` (`node_modules/@afipsdk/afip.js/src/Afip.js`).
+Concretely, that means **Kyra's certificate and private key get transmitted to
+AfipSDK's servers on every invoice emission**, not just used locally. That's a real
+trust decision baked into the current dependency choice, not just implementation
+detail — worth surfacing before real credentials ever get loaded onto this machine,
+since someone should consciously accept (or reject) that before it happens.
+
+Separately, the library accepts an optional `access_token` option
+(`this.options['access_token']`, sent as a Bearer header) — this authenticates to
+**AfipSDK's own API** (their rate limits / free vs. paid tier), unrelated to AFIP.
+It is NOT currently wired into this codebase — no env var, no config field, nothing
+in `src/config.js` passes it through. Open, unconfirmed question: does AfipSDK's
+proxy work in homologación without one, or is it required past some usage limit?
+Not established from anything in this repo or the vendored package — check
+`docs.afipsdk.com` (possibly means signing up for a free AfipSDK account) before
+assuming credential-only testing will work end-to-end.
+
 ### "Punto de Venta" — explained, and status unknown
 An AFIP "Punto de Venta" (POV) is a numbered sales point that a company registers
 with AFIP before it's allowed to emit invoices through it. It's not something the
