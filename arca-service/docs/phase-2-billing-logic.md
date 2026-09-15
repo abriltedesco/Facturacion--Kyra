@@ -313,3 +313,30 @@ to be the one making frontend changes. Before making or proposing a frontend cha
 call out what's being touched and why, so whoever is driving the frontend work is
 acting with full context rather than being surprised by a change — flag it in chat
 before editing, don't just make the change silently.
+
+## Real email sending (2026-09-15, `feat/email-sending`)
+
+Invoice/invoice-LLC email delivery was 100% simulated (`envioEmailMock.js` — literally
+a `setTimeout`, no backend call, ever) for every `tipoFactura`. Replaced with real SMTP
+delivery:
+
+- `arca-service`: `src/services/mailer.js` — `sendInvoiceEmail({ to, cc, subject, text,
+  attachmentBase64, attachmentFilename }, { transporter })`, same DI-seam/lazy-construction
+  shape as `services/afip.js`'s `getAfip()`. `POST /billing/send-email` (`src/routes/billing.js`)
+  wraps it. Config lives in `config.email` (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/
+  `SMTP_FROM`), all unset by default.
+- **No real SMTP account exists in this environment** — same situation as the AFIP cert.
+  Everything is verified up to a clean `EMAIL_NOT_CONFIGURED` (`test/billing.test.js`) or via
+  a fake transporter injected into `sendInvoiceEmail` (`test/mailer.unit.test.js`). No real
+  email has ever been sent from this codebase — do not claim otherwise.
+- `kyra-ipm-v4`: `src/utils/envioEmailMock.js` is gone, replaced by
+  `src/utils/envioEmailFactura.js` (same `enviarEmailFactura`/`construirRegistroHistorial`
+  exports, now backed by `billingRepository.sendEmail()` → the real endpoint above) —
+  `EmisionPage.jsx`/`FacturacionMes.jsx` updated to pass their existing `billingRepository`
+  instance through.
+- PDF attachment: only LLC lines have a PDF ready at emission time
+  (`generarPDFllc.js` stores it on `linea.pdfBlob` as a data URI, decoded to
+  `attachmentBase64` here). A/B/C lines don't generate their PDF automatically on
+  emission (`generarPDFafip.js` is only called on-demand from `DrawerFacturaDetalle.jsx`)
+  so those emails currently go out without an attachment — a known gap, not a bug in
+  this change, worth revisiting alongside the LLC-flow persistence work.

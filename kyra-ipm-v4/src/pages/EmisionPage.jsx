@@ -22,7 +22,7 @@ import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
 import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
 import { emitirEnARCA }   from '../utils/emisionARCA'
 import { generarPDFllc }  from '../utils/generarPDFllc'
-import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
+import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailFactura'
 import { api } from '../lib/api'
 import { createBillingRepository } from '../services/billingRepository'
 import { esFacturaWsfeElegible, emitirLineaReal } from '../services/emisionService'
@@ -144,6 +144,7 @@ export default function EmisionPage() {
       servicio,
       plantilla,
       config: CONFIG_EMAIL_INICIAL,
+      billingRepository,
     })
 
     // Guardar en historial local de la sesión

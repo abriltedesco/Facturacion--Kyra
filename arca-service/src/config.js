@@ -39,6 +39,16 @@ export const config = {
     // (used for manual/offline vouchers) — see docs/phase-2-billing-logic.md.
     puntoVenta: Number(optional('WSFE_PUNTO_VENTA', '')) || null,
   },
+  email: {
+    // SMTP delivery for invoice emails (src/services/mailer.js). No real SMTP
+    // account exists in this environment — same "unset until provided" shape as
+    // config.afip above, so the service still boots without it.
+    host: optional('SMTP_HOST', ''),
+    port: Number(optional('SMTP_PORT', '587')),
+    user: optional('SMTP_USER', ''),
+    pass: optional('SMTP_PASS', ''),
+    from: optional('SMTP_FROM', ''),
+  },
 }
 
 export function assertProductionSecrets() {

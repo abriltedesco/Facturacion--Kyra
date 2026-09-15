@@ -100,3 +100,27 @@ describe('GET /billing/invoices', () => {
     expect(res.body.map(invoice => invoice.cae)).not.toContain('route-test-cae-2')
   })
 })
+
+describe('POST /billing/send-email', () => {
+  it('requires auth', async () => {
+    const res = await request(app).post('/billing/send-email').send({ to: 'a@b.com', subject: 'x', text: 'x' })
+    expect(res.status).toBe(401)
+    expect(res.body.error).toBe('AUTH_REQUIRED')
+  })
+
+  it('rejects a missing recipient before ever touching SMTP config', async () => {
+    const res = await client.post('/billing/send-email').send({ subject: 'x', text: 'x' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('INVALID_RECIPIENT')
+  })
+
+  it('gets a well-formed request all the way to EMAIL_NOT_CONFIGURED', async () => {
+    // The route never injects a fake transporter, so it always hits the real,
+    // lazily-built getTransporter() — which fails here because no SMTP_HOST/
+    // SMTP_USER/SMTP_PASS/SMTP_FROM is set (see test/setupEnv.js). This is the
+    // furthest the HTTP route can go without real SMTP credentials.
+    const res = await client.post('/billing/send-email').send({ to: 'client@example.com', subject: 'Factura', text: 'Hola' })
+    expect(res.status).toBe(500)
+    expect(res.body.error).toBe('EMAIL_NOT_CONFIGURED')
+  })
+})

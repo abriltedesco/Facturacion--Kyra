@@ -12,7 +12,7 @@ import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
 import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
 import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
 import HistorialEnviosDrawer from '../components/Emails/HistorialEnviosDrawer'
-import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
+import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailFactura'
 import { getAllowedVoucherTypes } from '../domain/entityRules'
 import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 import { generarNroFactura } from '../data/contadoresFactura'
@@ -1314,6 +1314,7 @@ export default function FacturacionMes() {
 
     const resultado = await enviarEmailFactura({
       lineaFacturacion: lineaEmitida, cliente, servicio, plantilla, config: CONFIG_EMAIL_INICIAL,
+      billingRepository,
     })
     const registro = construirRegistroHistorial(resultado, lineaEmitida, Date.now())
     addHistorialEmail(registro)
