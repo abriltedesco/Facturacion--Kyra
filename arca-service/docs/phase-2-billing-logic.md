@@ -340,3 +340,39 @@ delivery:
   emission (`generarPDFafip.js` is only called on-demand from `DrawerFacturaDetalle.jsx`)
   so those emails currently go out without an attachment — a known gap, not a bug in
   this change, worth revisiting alongside the LLC-flow persistence work.
+
+## LLC/S/F invoice number persistence (2026-09-15, `feat/manual-invoice-records`)
+
+LLC invoices (Mercury LLC) and internal S/F vouchers never touch AFIP/WSFE, so unlike
+Factura A/B they had no backend record at all — their numbers lived only in
+kyra-ipm-v4's in-memory `contadoresFactura.js` state, meaning a page reload or a
+second browser session could silently reuse a number. Fixed with a new record-only
+table, mirroring the durability the `invoices` table already gives A/B:
+
+- `db/migrations/20260915120000_manual_invoices.sql` — `manual_invoices` table.
+  **Factura C is deliberately excluded**: `kyra-ipm-v4/src/utils/emisionARCA.js`
+  simulates it with a fake CAE as a placeholder/demo path (arca-service has no real
+  concept of Factura C at all, per rule 2 above), and giving that a durable "real"
+  record would misrepresent a demo as fact.
+- Uniqueness is **not** a flat `(entity, type, number)` tuple — it mirrors
+  `contadoresFactura.js`'s `claveContador()` exactly: LLC numbers are scoped per
+  billing entity (its counter key is `entity_<id>_LLC`), but S/F numbers share **one
+  global counter across every entity** (`sf_interno`, no entity in the key). Two
+  partial unique indexes encode this (`manual_invoices_llc_number_unique` on
+  `(billing_entity_id, invoice_number) where invoice_type = 'LLC'`;
+  `manual_invoices_sf_number_unique` on `invoice_number` alone, `where invoice_type
+  in ('S', 'F')`) — a single combined constraint would have silently allowed two
+  different entities to record the same S/F number, which the frontend's actual
+  counter can never produce.
+- `src/services/manualInvoices.js` — `recordManualInvoice()`/`listManualInvoices()`.
+  `POST /billing/manual-invoice` / `GET /billing/manual-invoices?clientId=` in
+  `src/routes/billing.js`.
+- `kyra-ipm-v4`: `src/services/emisionService.js`'s new `registrarInvoiceManual()` is
+  the only caller — called (not awaited) right after `setLineaStatus` in both
+  `EmisionPage.jsx` (LLC/S/F branches, both the single-line and "emitir todo" paths)
+  and `FacturacionMes.jsx`'s shared non-WSFE branch. **Deliberately non-blocking**:
+  by the time this runs the number is already shown to the user and may already be
+  on a downloaded PDF, so a persistence failure is logged
+  (`console.error`) and swallowed, never thrown or rolled back — same rationale as
+  `afip.js`'s CAE-persistence-failure handling, just one layer up since there's no
+  AFIP here to have already committed the number.

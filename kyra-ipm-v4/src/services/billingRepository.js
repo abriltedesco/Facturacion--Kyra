@@ -34,6 +34,22 @@ export function mapInvoiceRow(row) {
   }
 }
 
+export function mapManualInvoiceRow(row) {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    billingEntityId: row.billing_entity_id,
+    invoiceType: row.invoice_type,
+    invoiceNumber: row.invoice_number,
+    currency: row.currency,
+    netAmount: row.net_amount != null ? Number(row.net_amount) : null,
+    vatAmount: row.vat_amount != null ? Number(row.vat_amount) : null,
+    totalAmount: Number(row.total_amount),
+    issuedAt: row.issued_at,
+    createdBy: row.created_by,
+  }
+}
+
 export class BillingRepositoryError extends Error {
   constructor(message, code, cause) {
     super(message, { cause })
@@ -79,6 +95,30 @@ export function createBillingRepository(client) {
       try {
         const result = await client.post('/billing/send-email', { to, cc, subject, text, attachmentBase64, attachmentFilename })
         return { messageId: result?.messageId }
+      } catch (error) {
+        throw repositoryError(error)
+      }
+    },
+
+    // Record-only durability for LLC/S/F invoice numbers — see
+    // arca-service/src/services/manualInvoices.js and services/emisionService.js's
+    // registrarInvoiceManual(), which is the only caller.
+    async recordManualInvoice({ clientId, billingEntityId, invoiceType, invoiceNumber, currency, netAmount, vatAmount, totalAmount }) {
+      try {
+        const saved = await client.post('/billing/manual-invoice', {
+          clientId, billingEntityId, invoiceType, invoiceNumber, currency, netAmount, vatAmount, totalAmount,
+        })
+        return mapManualInvoiceRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
+    },
+
+    async listManualInvoices(clientId) {
+      try {
+        const query = clientId ? `?clientId=${clientId}` : ''
+        const rows = await client.get(`/billing/manual-invoices${query}`)
+        return (rows || []).map(mapManualInvoiceRow)
       } catch (error) {
         throw repositoryError(error)
       }
