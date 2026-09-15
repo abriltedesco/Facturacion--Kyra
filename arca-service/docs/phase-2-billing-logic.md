@@ -183,19 +183,20 @@ Worth knowing before building this: it's already mostly there on the frontend.
 [`generarPDFllc.js`](../../kyra-ipm-v4/src/utils/generarPDFllc.js) generates the
 Mercury LLC invoice PDF entirely client-side with jsPDF, pulling real entity data
 (name, fiscal address, bank accounts) from the real `entities`/`billing_entities`
-backend via `useEntities()` — not mock data. What's actually missing vs. Fran's
-suggestion:
-- No backend involvement at all — the PDF is built and downloaded in the browser,
+backend via `useEntities()` — not mock data.
+
+**Update (2026-09-15, `feat/manual-invoice-records`): the two gaps below are fixed.**
+LLC invoice numbers now persist to a real `manual_invoices` table with the same
+collision-proof uniqueness guarantee WSFE invoices get from `invoices` — see "LLC/S/F
+invoice number persistence" below for the shape (`recordManualInvoice()`,
+`POST /billing/manual-invoice`). Left here for context on why that work happened:
+- ~~No backend involvement at all — the PDF is built and downloaded in the browser,
   with no server-side record of it (unlike WSFE invoices, which now persist to the
   `invoices` table for an audit trail). An LLC invoice today leaves no trace once the
-  browser tab closes.
-- No invoice numbering/audit trail equivalent to the WSFE `(punto_venta, cbte_tipo,
+  browser tab closes.~~
+- ~~No invoice numbering/audit trail equivalent to the WSFE `(punto_venta, cbte_tipo,
   voucher_number)` uniqueness guarantee — nothing stops two people generating the
-  same invoice number, or losing track of what's already been issued.
-
-If this gets picked up, the natural shape is: keep field-filling as-is (or move it to
-the backend), but persist an LLC invoice record the same way `invoices` does for WSFE,
-so there's one audit trail for both entities instead of one real and one PDF-only.
+  same invoice number, or losing track of what's already been issued.~~
 
 ### Real AFIP calls — what's needed from the Kyra supervisor
 Nothing here has changed since the [Status](#status-2026-09-13) section above — still
@@ -302,11 +303,13 @@ pages as of this date (numbered gaps above repeated here for one place to check)
 4. `generateInvoice` hardcodes ARS; a non-ARS línea is blocked from real emission
    with an error rather than silently billed wrong, but there's no real multi-currency
    support.
-5. LLC (Mercury LLC) invoices have no backend/audit trail — see the LLC section above.
+5. ~~LLC (Mercury LLC) invoices have no backend/audit trail~~ — **fixed**, see
+   "LLC/S/F invoice number persistence" below.
 6. Large parts of the rest of the app (`Ingresos.jsx`, `Egresos.jsx`, `Emails.jsx`,
-   `Dashboard.jsx`, `Administracion.jsx`, email sending) are still on mock data /
-   simulated behavior, unrelated to this billing work but worth knowing they're not
-   real yet if anyone assumes otherwise.
+   `Dashboard.jsx`, `Administracion.jsx`) are still on mock data / simulated
+   behavior, unrelated to this billing work but worth knowing they're not real yet
+   if anyone assumes otherwise. Email sending is no longer on this list — **fixed**,
+   see "Real email sending" below.
 
 **Process note:** Fran is doing backend work on this project; a teammate is expected
 to be the one making frontend changes. Before making or proposing a frontend change,
