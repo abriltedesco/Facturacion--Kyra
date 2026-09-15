@@ -72,5 +72,16 @@ export function createBillingRepository(client) {
         throw repositoryError(error)
       }
     },
+
+    // Real SMTP delivery of an invoice email (any tipoFactura). See
+    // src/utils/envioEmailFactura.js for the caller that builds this payload.
+    async sendEmail({ to, cc, subject, text, attachmentBase64, attachmentFilename }) {
+      try {
+        const result = await client.post('/billing/send-email', { to, cc, subject, text, attachmentBase64, attachmentFilename })
+        return { messageId: result?.messageId }
+      } catch (error) {
+        throw repositoryError(error)
+      }
+    },
   }
 }

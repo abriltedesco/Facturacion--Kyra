@@ -2,6 +2,7 @@ import { Router } from 'express'
 
 import { generateInvoice } from '../services/afip.js'
 import { listInvoices } from '../services/invoices.js'
+import { sendInvoiceEmail } from '../services/mailer.js'
 
 export const billingRouter = Router()
 
@@ -23,6 +24,20 @@ billingRouter.get('/invoices', async (req, res, next) => {
   try {
     const clientId = req.query.clientId ? Number(req.query.clientId) : undefined
     res.json(await listInvoices({ clientId }))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /billing/send-email { to, cc?, subject, text, attachmentBase64?, attachmentFilename? }
+// -> { messageId }. Real SMTP delivery for invoice emails (any tipoFactura — this
+// route has no AFIP/WSFE dependency). Errors (AppError from mailer.js) flow through
+// the shared errorHandler.js exactly like every other route in this service.
+billingRouter.post('/send-email', async (req, res, next) => {
+  try {
+    const { to, cc, subject, text, attachmentBase64, attachmentFilename } = req.body || {}
+    const result = await sendInvoiceEmail({ to, cc, subject, text, attachmentBase64, attachmentFilename })
+    res.status(200).json(result)
   } catch (err) {
     next(err)
   }

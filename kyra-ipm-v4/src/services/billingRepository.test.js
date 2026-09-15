@@ -107,4 +107,35 @@ describe('createBillingRepository', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 7, clientId: 1, netAmount: 100 })
   })
+
+  it('envía un email invocando POST /billing/send-email con el payload tal cual', async () => {
+    const apiStub = {
+      post: async (path, body) => {
+        expect(path).toBe('/billing/send-email')
+        expect(body).toMatchObject({ to: 'client@example.com', subject: 'Factura', text: 'Hola' })
+        return { messageId: 'msg-1' }
+      },
+    }
+
+    const repository = createBillingRepository(apiStub)
+    const result = await repository.sendEmail({ to: 'client@example.com', subject: 'Factura', text: 'Hola' })
+
+    expect(result).toEqual({ messageId: 'msg-1' })
+  })
+
+  it('propaga los errores de envío de email como BillingRepositoryError', async () => {
+    const apiStub = {
+      post: async () => {
+        const error = new Error('Faltan variables de entorno de email (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM).')
+        error.code = 'EMAIL_NOT_CONFIGURED'
+        throw error
+      },
+    }
+
+    const repository = createBillingRepository(apiStub)
+    await expect(repository.sendEmail({ to: 'a@b.com', subject: 'x', text: 'x' })).rejects.toMatchObject({
+      name: 'BillingRepositoryError',
+      code: 'EMAIL_NOT_CONFIGURED',
+    })
+  })
 })

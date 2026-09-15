@@ -1,19 +1,18 @@
-// /src/utils/envioEmailMock.js
-// Simula el envío de email con factura adjunta vía SMTP.
-// CERO backend. CERO API calls reales. Solo setTimeout + lógica mock.
+// /src/utils/envioEmailFactura.js
+// Envío real de email con factura adjunta, vía arca-service
+// (POST /billing/send-email — src/services/mailer.js). Reemplaza el mock anterior
+// (envioEmailMock.js, que era 100% setTimeout + lógica fake) manteniendo el mismo
+// contrato de entrada/salida que ya esperan EmisionPage.jsx/FacturacionMes.jsx.
 //
-// Cambiar SIMULAR_ERROR_EMAIL a true para testear el flujo de error
-// sin tocar datos reales.
+// El PDF adjunto sólo está disponible hoy para líneas LLC (generarPDFllc.js lo deja
+// en lineaFacturacion.pdfBlob como data URI en el momento de la emisión). Las líneas
+// A/B/C todavía no generan su PDF automáticamente al emitir — sólo bajo demanda
+// desde DrawerFacturaDetalle.jsx — así que esas se envían sin adjunto por ahora.
 
 import { renderizarTemplate, construirVariables } from './renderizarTemplate'
 
-const SIMULAR_ERROR_EMAIL = false
-
-// Delay realista de "servidor SMTP respondiendo" (1500–2000ms)
-const delay = () => new Promise(r => setTimeout(r, 1500 + Math.random() * 500))
-
 /**
- * Simula el envío de un email con factura adjunta.
+ * Envía un email de factura/invoice vía arca-service.
  *
  * @param {Object} opts
  * @param {Object} opts.lineaFacturacion  — línea con status "emitida"
@@ -23,6 +22,7 @@ const delay = () => new Promise(r => setTimeout(r, 1500 + Math.random() * 500))
  * @param {Object} opts.config            — configEnvioEmail global
  * @param {string} [opts.emailOverride]   — email destino manual (reenvío)
  * @param {string[]} [opts.ccsOverride]   — CCs manuales (reenvío)
+ * @param {Object} opts.billingRepository — createBillingRepository(api), ver EmisionPage.jsx
  *
  * @returns {Promise<Object>}
  *   { success: true, asuntoEnviado, cuerpoEnviado, fechaEnvio, emailDestino, ccs, archivoAdjunto }
@@ -36,6 +36,7 @@ export async function enviarEmailFactura({
   config,
   emailOverride,
   ccsOverride,
+  billingRepository,
 }) {
   // ── 1. Determinar destinatarios ─────────────────────────────────────────
   const emailPrincipal = emailOverride
@@ -47,7 +48,6 @@ export async function enviarEmailFactura({
     ? ccsOverride
     : (cliente?.emailConfig?.ccs || cliente?.emailsCopia || [])
 
-  // Sin email → error inmediato (sin delay)
   if (!emailPrincipal) {
     return {
       success: false,
@@ -84,25 +84,35 @@ export async function enviarEmailFactura({
     archivoAdjunto = `Factura_${tipo}_${nroSafe}_${nombreCliente}.pdf`
   }
 
-  // ── 4. Simular delay SMTP ───────────────────────────────────────────────
-  await delay()
+  // data URI (ej. "data:application/pdf;base64,JVBERi0...") -> sólo la parte base64.
+  const pdfDataUri = lineaFacturacion.pdfBlob
+  const attachmentBase64 = pdfDataUri ? pdfDataUri.split(',')[1] : undefined
+
+  // ── 4. Enviar vía arca-service ───────────────────────────────────────────
+  if (!billingRepository) {
+    return {
+      success: false,
+      errorMensaje: 'El servicio de envío de emails no está configurado.',
+    }
+  }
+
+  try {
+    await billingRepository.sendEmail({
+      to: emailPrincipal,
+      cc: ccs,
+      subject: asuntoRenderizado,
+      text: cuerpoRenderizado,
+      attachmentBase64,
+      attachmentFilename: attachmentBase64 ? archivoAdjunto : undefined,
+    })
+  } catch (err) {
+    return {
+      success: false,
+      errorMensaje: err?.message || 'No se pudo enviar el email.',
+    }
+  }
 
   // ── 5. Resultado ────────────────────────────────────────────────────────
-  if (SIMULAR_ERROR_EMAIL) {
-    return {
-      success: false,
-      errorMensaje: 'Error de conexión con el servidor SMTP. Reintentá en unos minutos.',
-    }
-  }
-
-  // Error aleatorio 2% para hacer demos más realistas
-  if (Math.random() < 0.02) {
-    return {
-      success: false,
-      errorMensaje: 'Timeout de conexión SMTP (simulado). El servidor no respondió a tiempo.',
-    }
-  }
-
   return {
     success:          true,
     asuntoEnviado:    asuntoRenderizado,
