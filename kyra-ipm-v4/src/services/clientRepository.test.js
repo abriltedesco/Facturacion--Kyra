@@ -68,16 +68,23 @@ describe('createClientRepository', () => {
       billingEntity: null,
     }
 
-    const apiStub = {
-      post: async (path, body) => {
-        expect(path).toBe('/clients')
-        expect(body.client).toMatchObject({ name: 'Ayax', billingEntityId: 1 })
-        expect(body.ccEmails).toEqual([])
-        return savedRow
+    const supabaseStub = {
+      rpc: async (name, args) => {
+        expect(name).toBe('save_client')
+        expect(args.p_client).toMatchObject({ name: 'Ayax', billingEntityId: 1 })
+        expect(args.p_cc_emails).toEqual([])
+        return { data: { id: 1 }, error: null }
       },
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: savedRow, error: null }),
+          }),
+        }),
+      }),
     }
 
-    const repository = createClientRepository(apiStub)
+    const repository = createClientRepository(supabaseStub)
     const result = await repository.save({
       name: 'Ayax',
       billingEntityId: 1,

@@ -44,16 +44,21 @@ describe('mapEntityRow', () => {
 })
 
 describe('createEntityRepository', () => {
-  it('pide un enlace de descarga firmado para el documento indicado', async () => {
-    const apiStub = {
-      get: async path => {
-        expect(path).toBe('/entities/1/arca-document/21/link?download=1')
-        return { url: '/files/signed-token' }
-      },
+  it('crea una URL firmada breve y fuerza el nombre al descargar', async () => {
+    const createSignedUrl = async (path, expiresIn, options) => {
+      expect(path).toBe('1/certificado.pdf')
+      expect(expiresIn).toBe(60)
+      expect(options).toEqual({ download: 'constancia-arca.pdf' })
+      return { data: { signedUrl: 'https://storage.test/signed' }, error: null }
     }
-    const repository = createEntityRepository(apiStub)
+    const repository = createEntityRepository({
+      storage: { from: bucket => {
+        expect(bucket).toBe('arca-documents')
+        return { createSignedUrl }
+      } },
+    })
 
-    await expect(repository.createDocumentUrl(1, 21, true))
-      .resolves.toMatch(/\/files\/signed-token$/)
+    await expect(repository.createDocumentUrl('1/certificado.pdf', 60, 'constancia-arca.pdf'))
+      .resolves.toBe('https://storage.test/signed')
   })
 })

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import { createClientRepository } from '../services/clientRepository'
 
 const ClientsContext = createContext(null)
-const defaultRepository = createClientRepository(api)
+const defaultRepository = supabase ? createClientRepository(supabase) : null
 
 function sortByName(items) {
   return [...items].sort((left, right) => left.name.localeCompare(right.name, 'es'))
@@ -19,7 +19,7 @@ export function ClientsProvider({ children, repository = defaultRepository }) {
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!repository) {
-      setError('El servicio de facturación no está configurado.')
+      setError('Supabase no está configurado.')
       setLoading(false)
       return []
     }

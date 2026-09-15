@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const { user, signIn, error, clearError } = useAuth()
+  const { session, signIn, error, clearError, isConfigured } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -15,7 +15,7 @@ export default function Login() {
     return clearError
   }, [])
 
-  if (user) return <Navigate to="/dashboard" replace />
+  if (session) return <Navigate to="/dashboard" replace />
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -44,6 +44,12 @@ export default function Login() {
           <h1>Ingresar</h1>
           <p className="login-intro">Usá las credenciales asignadas por administración.</p>
 
+          {!isConfigured && (
+            <div className="login-config-error" role="alert">
+              Falta configurar la conexión con Supabase. Revisá las variables de entorno del proyecto.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="login-form" aria-busy={submitting}>
             <div className="form-group">
               <label htmlFor="login-username">Usuario</label>
@@ -55,7 +61,7 @@ export default function Login() {
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck="false"
-                disabled={submitting}
+                disabled={!isConfigured || submitting}
                 required
               />
             </div>
@@ -69,14 +75,14 @@ export default function Login() {
                 value={password}
                 onChange={event => { setPassword(event.target.value); clearError() }}
                 autoComplete="current-password"
-                disabled={submitting}
+                disabled={!isConfigured || submitting}
                 required
               />
             </div>
 
             {error && <div className="login-error" role="alert">{error}</div>}
 
-            <button className="login-submit" type="submit" disabled={submitting}>
+            <button className="login-submit" type="submit" disabled={!isConfigured || submitting}>
               {submitting ? 'Ingresando…' : 'Ingresar'}
             </button>
           </form>

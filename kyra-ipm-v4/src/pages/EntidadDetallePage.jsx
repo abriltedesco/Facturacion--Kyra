@@ -154,7 +154,7 @@ export default function EntidadDetallePage() {
   async function accessDocument(document, download = false) {
     setDocumentActionId(document.id)
     try {
-      const url = await createDocumentUrl(entity.id, document.id, download)
+      const url = await createDocumentUrl(document.storagePath, 60, download ? document.originalFileName : '')
       if (download) {
         const link = window.document.createElement('a')
         link.href = url

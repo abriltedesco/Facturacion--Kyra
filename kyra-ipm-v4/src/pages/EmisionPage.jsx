@@ -7,9 +7,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
-import { useClients } from '../context/ClientsContext'
 import { getEmissionWarningEntries } from '../domain/emissionWarnings'
-import { mapClienteRealALegacy, esClienteIdReal, idClienteReal } from '../domain/clienteLookup'
 
 import { CLIENTES_INICIAL } from '../data/clientes'
 import { SERVICIOS_INICIAL } from '../data/servicios'
@@ -22,14 +20,7 @@ import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
 import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
 import { emitirEnARCA }   from '../utils/emisionARCA'
 import { generarPDFllc }  from '../utils/generarPDFllc'
-import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailFactura'
-import { api } from '../lib/api'
-import { createBillingRepository } from '../services/billingRepository'
-import { esFacturaWsfeElegible, emitirLineaReal } from '../services/emisionService'
-
-// Único punto del frontend habilitado para pedirle a arca-service una emisión WSFE
-// real (Factura A/B) — ver src/services/emisionService.js.
-const billingRepository = createBillingRepository(api)
+import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
 
 import TablaEmision       from '../components/Emision/TablaEmision'
 import DrawerFacturaDetalle from '../components/Emision/DrawerFacturaDetalle'
@@ -67,10 +58,6 @@ export default function EmisionPage() {
   const navigate = useNavigate()
   const { lineas, setLineas } = useFacturacion()
   const { entities, activeEntities } = useEntities()
-  const { getClient: getClienteReal, activeClients: clientesReales } = useClients()
-  // Sólo para la tabla (display) — mismo esquema de offset que FacturacionMes.jsx,
-  // ver domain/clienteLookup.js.
-  const clientesParaTabla = [...CLIENTES_INICIAL, ...clientesReales.map(mapClienteRealALegacy)]
   const contadoresRef                     = useRef({ ...CONTADORES_INICIAL })
   const historialEmailRef                 = useRef([])        // local historial de emails de esta sesión
   const [emitirTodoActivo, setEmitirTodoActivo] = useState(false)
@@ -82,10 +69,7 @@ export default function EmisionPage() {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  function getCliente(id)  {
-    return CLIENTES_INICIAL.find(c => c.id === id)
-      || (esClienteIdReal(id) ? mapClienteRealALegacy(getClienteReal(idClienteReal(id))) : null)
-  }
+  function getCliente(id)  { return CLIENTES_INICIAL.find(c => c.id === id) }
   function getServicio(id) { return SERVICIOS_INICIAL.find(s => s.id === id) }
   function getEntidad(id)  { return entities.find(entity => String(entity.id) === String(id)) }
 
@@ -144,7 +128,6 @@ export default function EmisionPage() {
       servicio,
       plantilla,
       config: CONFIG_EMAIL_INICIAL,
-      billingRepository,
     })
 
     // Guardar en historial local de la sesión
@@ -172,6 +155,8 @@ export default function EmisionPage() {
   }
 
   async function emitirLineaAhora(linea) {
+    const nro = siguienteNro(linea)
+
     setLineaStatus(linea.id, {
       status: 'emitiendo',
       nroFactura: null,
@@ -179,12 +164,8 @@ export default function EmisionPage() {
       errorMensaje: null,
     })
 
-    let nroAllocated = false
-
     try {
       if (linea.tipoFactura === 'LLC') {
-        const nro = siguienteNro(linea)
-        nroAllocated = true
         const cliente  = getCliente(linea.clienteId)
         const servicio = getServicio(linea.servicioId)
         const entidad  = getEntidad(linea.entidadId)
@@ -204,8 +185,6 @@ export default function EmisionPage() {
         intentarEnvioEmail(lineaEmitida)
 
       } else if (linea.tipoFactura === 'S' || linea.tipoFactura === 'F') {
-        const nro = siguienteNro(linea)
-        nroAllocated = true
         const hoy = new Date().toISOString().split('T')[0]
         const lineaEmitida = {
           ...linea, status: 'emitida', nroFactura: nro,
@@ -215,22 +194,8 @@ export default function EmisionPage() {
         }
         setLineaStatus(linea.id, lineaEmitida)
 
-      } else if (esFacturaWsfeElegible(linea)) {
-        // Factura A/B -> emisión WSFE real vía arca-service. La numeración es
-        // autoridad del backend (AFIP), no se usa el contador local acá.
-        const lineaEmitida = await emitirLineaReal(linea, { billingRepository })
-        setLineaStatus(linea.id, lineaEmitida)
-        intentarEnvioEmail(lineaEmitida)
-
       } else {
-        // Factura C, o A/B de una línea mock vieja sin cliente real asignado
-        // (esFacturaWsfeElegible ya filtró eso): arca-service no tiene ningún
-        // concepto de Factura C (WSFE domestic-only es A/B, ver
-        // docs/phase-2-billing-logic.md), y una línea A/B sin cliente real no debe
-        // disparar una emisión real contra un id que coincida por casualidad —
-        // ambas siguen en el simulador local.
-        const nro = siguienteNro(linea)
-        nroAllocated = true
+        // ARCA async mock (A, B, C)
         const resultado = await emitirEnARCA(linea, nro)
 
         if (resultado.success) {
@@ -255,10 +220,10 @@ export default function EmisionPage() {
         }
       }
     } catch (err) {
-      if (nroAllocated) revertirNro(linea)
+      revertirNro(linea)
       setLineaStatus(linea.id, {
         status:       'error_emision',
-        errorCodigo:  err?.code || 'JS-ERROR',
+        errorCodigo:  'JS-ERROR',
         errorMensaje: err?.message || 'Error inesperado.',
       })
     }
@@ -276,13 +241,11 @@ export default function EmisionPage() {
     let errores  = 0
 
     for (const linea of candidatas) {
+      const nro = siguienteNro(linea)
       setLineaStatus(linea.id, { status: 'emitiendo', nroFactura: null })
-      let nroAllocated = false
 
       try {
         if (linea.tipoFactura === 'LLC') {
-          const nro = siguienteNro(linea)
-          nroAllocated = true
           const cliente  = getCliente(linea.clienteId)
           const servicio = getServicio(linea.servicioId)
           const entidad  = getEntidad(linea.entidadId)
@@ -303,8 +266,6 @@ export default function EmisionPage() {
           emitidas++
 
         } else if (linea.tipoFactura === 'S' || linea.tipoFactura === 'F') {
-          const nro = siguienteNro(linea)
-          nroAllocated = true
           const hoy = new Date().toISOString().split('T')[0]
           setLineaStatus(linea.id, {
             status:'emitida', nroFactura:nro,
@@ -314,19 +275,7 @@ export default function EmisionPage() {
           })
           emitidas++
 
-        } else if (esFacturaWsfeElegible(linea)) {
-          // Factura A/B -> emisión WSFE real vía arca-service (numeración
-          // autoridad del backend, no se usa el contador local).
-          const lineaEmitida = await emitirLineaReal(linea, { billingRepository })
-          setLineaStatus(linea.id, lineaEmitida)
-          intentarEnvioEmail(lineaEmitida)
-          emitidas++
-
         } else {
-          // Factura C, o A/B sin cliente real: sigue en el simulador local
-          // (ver el mismo branching en emitirLineaAhora arriba).
-          const nro = siguienteNro(linea)
-          nroAllocated = true
           const resultado = await emitirEnARCA(linea, nro)
           if (resultado.success) {
             const lineaEmitida = {
@@ -351,10 +300,10 @@ export default function EmisionPage() {
           }
         }
       } catch (err) {
-        if (nroAllocated) revertirNro(linea)
+        revertirNro(linea)
         setLineaStatus(linea.id, {
           status:'error_emision',
-          errorCodigo:err?.code || 'JS-ERROR', errorMensaje:err?.message || 'Error inesperado.',
+          errorCodigo:'JS-ERROR', errorMensaje:err?.message || 'Error inesperado.',
         })
         errores++
       }
@@ -571,7 +520,7 @@ export default function EmisionPage() {
         borderRadius:10, overflow:'hidden' }}>
         <TablaEmision
           lineas={lineasFiltradas}
-          clientes={clientesParaTabla}
+          clientes={CLIENTES_INICIAL}
           servicios={SERVICIOS_INICIAL}
           entidades={entities}
           onEmitir={solicitarEmision}

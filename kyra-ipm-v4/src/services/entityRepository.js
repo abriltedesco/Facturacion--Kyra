@@ -1,5 +1,3 @@
-import { API_URL } from '../lib/api'
-
 function mapBankAccount(row) {
   return {
     id: row.id,
@@ -69,6 +67,15 @@ export function mapEntityRow(row) {
   }
 }
 
+const ENTITY_SELECT = `
+  *,
+  bankAccounts:entity_bank_accounts(*),
+  arcaDocuments:entity_arca_documents(
+    *,
+    uploadedByProfile:profiles!entity_arca_documents_uploaded_by_fkey(username, display_name)
+  )
+`
+
 export class EntityRepositoryError extends Error {
   constructor(message, code, cause) {
     super(message, { cause })
@@ -126,81 +133,72 @@ function accountsPayload(bankAccounts) {
 }
 
 export function createEntityRepository(client) {
-  if (!client) throw new EntityRepositoryError('El servicio de facturación no está configurado.', 'API_NOT_CONFIGURED')
+  if (!client) throw new EntityRepositoryError('Supabase no está configurado.', 'SUPABASE_NOT_CONFIGURED')
 
   async function getById(id) {
-    try {
-      return mapEntityRow(await client.get(`/entities/${id}`))
-    } catch (error) {
-      throw repositoryError(error)
-    }
+    const { data, error } = await client
+      .from('billing_entities')
+      .select(ENTITY_SELECT)
+      .eq('id', id)
+      .single()
+    if (error) throw repositoryError(error)
+    return mapEntityRow(data)
   }
 
   return {
     async list() {
-      try {
-        const rows = await client.get('/entities')
-        return (rows || []).map(mapEntityRow)
-      } catch (error) {
-        throw repositoryError(error)
-      }
+      const { data, error } = await client
+        .from('billing_entities')
+        .select(ENTITY_SELECT)
+        .order('name', { ascending: true })
+      if (error) throw repositoryError(error)
+      return (data || []).map(mapEntityRow)
     },
 
     getById,
 
     async save(entity) {
-      try {
-        const saved = await client.post('/entities', {
-          entity: entityPayload(entity),
-          accounts: accountsPayload(entity.bankAccounts || []),
-          expectedUpdatedAt: entity.id ? entity.updatedAt : null,
-        })
-        return mapEntityRow(saved)
-      } catch (error) {
-        throw repositoryError(error)
-      }
+      const { data, error } = await client.rpc('save_billing_entity', {
+        p_entity: entityPayload(entity),
+        p_accounts: accountsPayload(entity.bankAccounts || []),
+        p_expected_updated_at: entity.id ? entity.updatedAt : null,
+      })
+      if (error) throw repositoryError(error)
+      return getById(data.id)
     },
 
     async setStatus(entity, status) {
-      try {
-        const saved = await client.patch(`/entities/${entity.id}/status`, {
-          status,
-          expectedUpdatedAt: entity.updatedAt,
-        })
-        return mapEntityRow(saved)
-      } catch (error) {
-        throw repositoryError(error)
-      }
+      const { data, error } = await client.rpc('set_billing_entity_status', {
+        p_entity_id: entity.id,
+        p_status: status,
+        p_expected_updated_at: entity.updatedAt,
+      })
+      if (error) throw repositoryError(error)
+      return getById(data.id)
     },
 
     async uploadArcaDocument(entityId, file, expirationDate) {
       const formData = new FormData()
+      formData.set('entityId', String(entityId))
       formData.set('expirationDate', expirationDate)
       formData.set('file', file)
-      try {
-        await client.post(`/entities/${entityId}/arca-document`, formData, { isForm: true })
-      } catch (error) {
-        throw repositoryError(error)
-      }
+      const { error } = await client.functions.invoke('upload-arca-document', { body: formData })
+      if (error) throw repositoryError(error)
       return getById(entityId)
     },
 
     async revokeArcaDocument(entityId, documentId) {
-      try {
-        return mapEntityRow(await client.post(`/entities/${entityId}/arca-document/${documentId}/revoke`))
-      } catch (error) {
-        throw repositoryError(error)
-      }
+      const { error } = await client.rpc('revoke_arca_document', { p_document_id: documentId })
+      if (error) throw repositoryError(error)
+      return getById(entityId)
     },
 
-    async createDocumentUrl(entityId, documentId, download = '') {
-      try {
-        const query = download ? '?download=1' : ''
-        const { url } = await client.get(`/entities/${entityId}/arca-document/${documentId}/link${query}`)
-        return `${API_URL}${url}`
-      } catch (error) {
-        throw repositoryError(error)
-      }
+    async createDocumentUrl(storagePath, expiresIn = 60, download = '') {
+      const { data, error } = await client.storage
+        .from('arca-documents')
+        .createSignedUrl(storagePath, expiresIn, download ? { download } : undefined)
+      if (error) throw repositoryError(error)
+      return data.signedUrl
     },
   }
 }

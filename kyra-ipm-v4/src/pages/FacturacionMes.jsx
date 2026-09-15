@@ -2,7 +2,6 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
-import { useClients } from '../context/ClientsContext'
 import Modal from '../components/Modal'
 import EmissionWarningDialog from '../components/Emision/EmissionWarningDialog'
 import { CLIENTES_INICIAL } from '../data/clientes'
@@ -12,18 +11,10 @@ import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
 import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
 import BadgeEstadoEnvio from '../components/Emails/BadgeEstadoEnvio'
 import HistorialEnviosDrawer from '../components/Emails/HistorialEnviosDrawer'
-import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailFactura'
+import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
 import { getAllowedVoucherTypes } from '../domain/entityRules'
 import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 import { generarNroFactura } from '../data/contadoresFactura'
-import { mapClienteRealALegacy, esClienteIdReal } from '../domain/clienteLookup'
-import { api } from '../lib/api'
-import { createBillingRepository } from '../services/billingRepository'
-import { esFacturaWsfeElegible, emitirLineaReal } from '../services/emisionService'
-
-// Mismo repositorio/servicio que EmisionPage.jsx — es a propósito el único otro
-// lugar del frontend que puede pedir una emisión WSFE real (ver emisionService.js).
-const billingRepository = createBillingRepository(api)
 
 
 const MES_LABEL   = 'Agosto 2026'
@@ -531,15 +522,10 @@ function ServiceLineAprobada({ linea, entidad, servicio, onEmitir, onRechazar })
             onClick={() => onEmitir(linea.id)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            <IcoSend /> {linea.errorMensaje ? 'Reintentar' : 'Emitir'}
+            <IcoSend /> Emitir
           </button>
         </div>
       </div>
-      {linea.errorMensaje && (
-        <div className="admin-data-error" role="alert" style={{ fontSize: '12px' }}>
-          No se pudo emitir: {linea.errorMensaje}
-        </div>
-      )}
     </div>
   )
 }
@@ -955,11 +941,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // Un cliente real no tiene catálogo de servicios (servicios.js sólo referencia
-  // el roster mock) — para esos casos el paso "Servicio" se salta y el monto se
-  // ingresa directo, ver validatePaso0/handleAgregar más abajo.
-  const clienteEsReal = esClienteIdReal(form.clienteId)
-  const clienteSrvs = form.clienteId && !clienteEsReal
+  const clienteSrvs = form.clienteId
     ? servicios.filter(s => String(s.clienteId) === String(form.clienteId))
     : []
   const servSel  = servicios.find(s => String(s.id) === String(form.servicioId))
@@ -985,7 +967,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
   function validatePaso0() {
     const e = {}
     if (!form.clienteId)   e.clienteId   = 'Seleccioná un cliente'
-    if (!clienteEsReal && !form.servicioId) e.servicioId = 'Seleccioná un servicio'
+    if (!form.servicioId)  e.servicioId  = 'Seleccioná un servicio'
     if (!form.entidadId)   e.entidadId   = 'Seleccioná una entidad'
     if (!form.tipoFactura) e.tipoFactura = 'Requerido'
     if (entidadSel && !tiposFactura.includes(form.tipoFactura)) e.tipoFactura = 'No disponible para esta entidad'
@@ -1026,7 +1008,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 
     onAgregar({
       clienteId:    Number(form.clienteId),
-      servicioId:   clienteEsReal ? null : Number(form.servicioId),
+      servicioId:   Number(form.servicioId),
       entidadId:    Number(form.entidadId),
       tipoFactura:  form.tipoFactura,
       moneda:       form.moneda,
@@ -1119,23 +1101,17 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
             </select>
             {errors.clienteId && <div className="form-field-error">{errors.clienteId}</div>}
           </div>
-          {clienteEsReal ? (
-            <div style={{ fontSize: '13px', opacity: .6 }}>
-              Cliente real: no usa catálogo de servicios — el importe se ingresa directo en el siguiente paso.
-            </div>
-          ) : (
-            <div className="form-group">
-              <label>Servicio <span className="label-req">*</span></label>
-              <select className="form-select" value={form.servicioId} disabled={!form.clienteId}
-                onChange={e => setF('servicioId', e.target.value)}>
-                <option value="">— Seleccioná —</option>
-                {clienteSrvs.filter(s => s.estado === 'activo').map(s => (
-                  <option key={s.id} value={s.id}>{s.nombre}</option>
-                ))}
-              </select>
-              {errors.servicioId && <div className="form-field-error">{errors.servicioId}</div>}
-            </div>
-          )}
+          <div className="form-group">
+            <label>Servicio <span className="label-req">*</span></label>
+            <select className="form-select" value={form.servicioId} disabled={!form.clienteId}
+              onChange={e => setF('servicioId', e.target.value)}>
+              <option value="">— Seleccioná —</option>
+              {clienteSrvs.filter(s => s.estado === 'activo').map(s => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+            {errors.servicioId && <div className="form-field-error">{errors.servicioId}</div>}
+          </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <div className="form-group" style={{ flex: 1 }}>
               <label>Entidad emisora <span className="label-req">*</span></label>
@@ -1265,7 +1241,6 @@ export default function FacturacionMes() {
   const navigate = useNavigate()
   const { lineas, setLineas, historialEmail, addHistorialEmail } = useFacturacion()
   const { entities: entidades, activeEntities } = useEntities()
-  const { activeClients: clientesReales } = useClients()
   const [tabActivo,       setTabActivo]       = useState('revision')
   const [drawerLinea,     setDrawerLinea]     = useState(null)
   const [emailDrawerLinea, setEmailDrawerLinea] = useState(null)
@@ -1275,11 +1250,7 @@ export default function FacturacionMes() {
 
   const btnNuevaRef = useRef(null)
 
-  // Roster mock + clientes reales (arca-service), con id-offset para no chocar
-  // (ver domain/clienteLookup.js). Un único array así ModalNuevaFactura,
-  // ModalEditarLinea, la agrupación por cliente y el lookup de email de más abajo
-  // siguen haciendo `.find(c => c.id === clienteId)` sin cambios.
-  const clientes  = [...CLIENTES_INICIAL, ...clientesReales.map(mapClienteRealALegacy)]
+  const clientes  = CLIENTES_INICIAL
   const servicios = SERVICIOS_INICIAL
 
   // ── Email helpers ────────────────────────────────────────────────────────────
@@ -1314,7 +1285,6 @@ export default function FacturacionMes() {
 
     const resultado = await enviarEmailFactura({
       lineaFacturacion: lineaEmitida, cliente, servicio, plantilla, config: CONFIG_EMAIL_INICIAL,
-      billingRepository,
     })
     const registro = construirRegistroHistorial(resultado, lineaEmitida, Date.now())
     addHistorialEmail(registro)
@@ -1347,45 +1317,16 @@ export default function FacturacionMes() {
     emitirLineaAhora(id)
   }
 
-  async function emitirLineaAhora(id) {
-    const linea = lineas.find(l => l.id === id)
-    if (!linea) return
-
-    setLineaEmailStatus(id, { status: 'emitiendo' })
-
-    // Factura A/B con cliente real (esFacturaWsfeElegible) -> emisión WSFE real vía
-    // arca-service, mismo servicio que EmisionPage.jsx (el único otro lugar
-    // habilitado a producir un CAE real). Todo lo demás (C, LLC/S/F, o A/B de una
-    // línea mock vieja sin cliente real) sigue con la numeración/estado local de
-    // siempre — arca-service no tiene ningún concepto de esos tipos.
-    if (esFacturaWsfeElegible(linea)) {
-      try {
-        const lineaEmitida = await emitirLineaReal(linea, { billingRepository })
-        setLineaEmailStatus(id, lineaEmitida)
-        intentarEnvioEmail(lineaEmitida)
-      } catch (err) {
-        // Vuelve a 'aprobada' (no 'error_emision') a propósito: esta página no
-        // tiene una vista/tab para ese estado — ver ServiceLineAprobada, que
-        // muestra el error inline y reutiliza el mismo botón Emitir como
-        // "Reintentar". Sin esto la línea desaparecía de todas las tabs.
-        setLineaEmailStatus(id, {
-          status: 'aprobada',
-          errorCodigo: err?.code || 'JS-ERROR',
-          errorMensaje: err?.message || 'Error inesperado.',
-        })
-      }
-      return
-    }
-
+  function emitirLineaAhora(id) {
     let lineaEmitida
     setLineas(ls => {
-      const entidad = entidades.find(item => String(item.id) === String(linea.entidadId))
-      const nroFac = contadorNroFac(ls, entidad, linea.tipoFactura, linea.anio)
+      const linea  = ls.find(l => l.id === id)
+      const entidad = entidades.find(item => String(item.id) === String(linea?.entidadId))
+      const nroFac = contadorNroFac(ls, entidad, linea?.tipoFactura, linea?.anio)
       lineaEmitida = {
         ...linea, status: 'emitida', nroFactura: nroFac,
         fechaEmision: fechaHoy(),
         fechaVencimiento: fechaUltimoDia(linea.mes, linea.anio),
-        errorCodigo: null, errorMensaje: null,
       }
       return ls.map(l => l.id === id ? lineaEmitida : l)
     })
