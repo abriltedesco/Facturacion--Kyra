@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { emitirLineaReal, esFacturaWsfeElegible } from './emisionService'
+import { emitirLineaReal, esFacturaWsfeElegible, registrarInvoiceManual } from './emisionService'
 import { REAL_CLIENT_ID_OFFSET } from '../domain/clienteLookup'
 
 const REAL_CLIENTE_ID = 1 // id real en arca-service
@@ -77,5 +77,55 @@ describe('emitirLineaReal', () => {
     const billingRepository = { emitInvoice: vi.fn(async () => { throw backendError }) }
 
     await expect(emitirLineaReal(lineaBase, { billingRepository })).rejects.toBe(backendError)
+  })
+})
+
+describe('registrarInvoiceManual', () => {
+  const lineaLlc = {
+    id: 2, clienteId: REAL_CLIENT_ID_OFFSET + 1, entidadId: 3, tipoFactura: 'LLC', moneda: 'USD',
+    nroFactura: 'INV-2026-042', importeBruto: 500, importeNeto: 450, impuesto: 50,
+  }
+
+  it('llama a billingRepository.recordManualInvoice con el id de cliente real (sin offset) para LLC', async () => {
+    const billingRepository = { recordManualInvoice: vi.fn(async () => ({})) }
+
+    await registrarInvoiceManual(lineaLlc, { billingRepository })
+
+    expect(billingRepository.recordManualInvoice).toHaveBeenCalledWith({
+      clientId: 1, billingEntityId: 3, invoiceType: 'LLC', invoiceNumber: 'INV-2026-042',
+      currency: 'USD', netAmount: 450, vatAmount: 50, totalAmount: 500,
+    })
+  })
+
+  it('omite clientId cuando la línea tiene un cliente mock (no offset-tagged)', async () => {
+    const billingRepository = { recordManualInvoice: vi.fn(async () => ({})) }
+    const lineaMock = { ...lineaLlc, clienteId: 1 }
+
+    await registrarInvoiceManual(lineaMock, { billingRepository })
+
+    expect(billingRepository.recordManualInvoice.mock.calls[0][0].clientId).toBeUndefined()
+  })
+
+  it('no llama al backend para tipos sin equivalente durable (C, A, B)', async () => {
+    const billingRepository = { recordManualInvoice: vi.fn() }
+
+    await registrarInvoiceManual({ ...lineaLlc, tipoFactura: 'C' }, { billingRepository })
+    await registrarInvoiceManual({ ...lineaLlc, tipoFactura: 'A' }, { billingRepository })
+
+    expect(billingRepository.recordManualInvoice).not.toHaveBeenCalled()
+  })
+
+  it('no lanza cuando el backend falla — la loguea y sigue (el número ya está en uso)', async () => {
+    const billingRepository = { recordManualInvoice: vi.fn(async () => { throw new Error('boom') }) }
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(registrarInvoiceManual(lineaLlc, { billingRepository })).resolves.toBeUndefined()
+    expect(spy).toHaveBeenCalled()
+
+    spy.mockRestore()
+  })
+
+  it('no hace nada si no se inyecta billingRepository', async () => {
+    await expect(registrarInvoiceManual(lineaLlc, {})).resolves.toBeUndefined()
   })
 })

@@ -19,7 +19,7 @@ import { generarNroFactura } from '../data/contadoresFactura'
 import { mapClienteRealALegacy, esClienteIdReal } from '../domain/clienteLookup'
 import { api } from '../lib/api'
 import { createBillingRepository } from '../services/billingRepository'
-import { esFacturaWsfeElegible, emitirLineaReal } from '../services/emisionService'
+import { esFacturaWsfeElegible, emitirLineaReal, registrarInvoiceManual } from '../services/emisionService'
 
 // Mismo repositorio/servicio que EmisionPage.jsx — es a propósito el único otro
 // lugar del frontend que puede pedir una emisión WSFE real (ver emisionService.js).
@@ -1390,6 +1390,9 @@ export default function FacturacionMes() {
     })
     // Disparar envío de email en el próximo tick (lineaEmitida ya está construida)
     setTimeout(() => intentarEnvioEmail(lineaEmitida), 0)
+    // registrarInvoiceManual filtra por tipoFactura internamente (sólo LLC/S/F,
+    // ver emisionService.js) — no hace falta chequear el tipo acá.
+    registrarInvoiceManual(lineaEmitida, { billingRepository })
   }
 
   function continueEmission() {

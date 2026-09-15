@@ -25,7 +25,7 @@ import { generarPDFllc }  from '../utils/generarPDFllc'
 import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEmailMock'
 import { api } from '../lib/api'
 import { createBillingRepository } from '../services/billingRepository'
-import { esFacturaWsfeElegible, emitirLineaReal } from '../services/emisionService'
+import { esFacturaWsfeElegible, emitirLineaReal, registrarInvoiceManual } from '../services/emisionService'
 
 // Único punto del frontend habilitado para pedirle a arca-service una emisión WSFE
 // real (Factura A/B) — ver src/services/emisionService.js.
@@ -201,6 +201,7 @@ export default function EmisionPage() {
         }
         setLineaStatus(linea.id, lineaEmitida)
         intentarEnvioEmail(lineaEmitida)
+        registrarInvoiceManual(lineaEmitida, { billingRepository })
 
       } else if (linea.tipoFactura === 'S' || linea.tipoFactura === 'F') {
         const nro = siguienteNro(linea)
@@ -213,6 +214,7 @@ export default function EmisionPage() {
           emailEstado: 'na',
         }
         setLineaStatus(linea.id, lineaEmitida)
+        registrarInvoiceManual(lineaEmitida, { billingRepository })
 
       } else if (esFacturaWsfeElegible(linea)) {
         // Factura A/B -> emisión WSFE real vía arca-service. La numeración es
@@ -299,18 +301,21 @@ export default function EmisionPage() {
           }
           setLineaStatus(linea.id, lineaEmitida)
           intentarEnvioEmail(lineaEmitida)
+          registrarInvoiceManual(lineaEmitida, { billingRepository })
           emitidas++
 
         } else if (linea.tipoFactura === 'S' || linea.tipoFactura === 'F') {
           const nro = siguienteNro(linea)
           nroAllocated = true
           const hoy = new Date().toISOString().split('T')[0]
-          setLineaStatus(linea.id, {
-            status:'emitida', nroFactura:nro,
+          const lineaEmitida = {
+            ...linea, status:'emitida', nroFactura:nro,
             fechaEmision:hoy, fechaVencimiento:hoy,
             errorCodigo:null, errorMensaje:null,
             emailEstado: 'na',
-          })
+          }
+          setLineaStatus(linea.id, lineaEmitida)
+          registrarInvoiceManual(lineaEmitida, { billingRepository })
           emitidas++
 
         } else if (esFacturaWsfeElegible(linea)) {

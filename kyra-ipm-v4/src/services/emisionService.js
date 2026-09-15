@@ -8,6 +8,12 @@ import { formatNroFacturaAFIP } from '../data/contadoresFactura'
 import { BillingRepositoryError } from './billingRepository'
 import { esClienteIdReal, idClienteReal } from '../domain/clienteLookup'
 
+// Invoice types with no AFIP/WSFE equivalent whose local number is still worth
+// making durable — see arca-service/src/services/manualInvoices.js. Factura C is
+// deliberately excluded: emisionARCA.js simulates it with a fake CAE as a demo
+// placeholder, and recording that in a "real" table would misrepresent it.
+const TIPOS_CON_REGISTRO_MANUAL = ['LLC', 'S', 'F']
+
 // Requires BOTH tipoFactura A/B AND a genuinely real (offset-tagged) clienteId —
 // see domain/clienteLookup.js. Without the second check, a pre-existing mock línea
 // with tipoFactura A/B and a small clienteId (1-12, same range arca-service's
@@ -50,5 +56,35 @@ export async function emitirLineaReal(linea, { billingRepository }) {
     fechaVencimiento: ultimoDia.toISOString().split('T')[0],
     errorCodigo: null,
     errorMensaje: null,
+  }
+}
+
+// Best-effort durability record for LLC/S/F invoice numbers (see
+// TIPOS_CON_REGISTRO_MANUAL above and arca-service/src/services/manualInvoices.js).
+// These numbers are allocated locally (contadoresFactura.js) and never touch AFIP —
+// unlike emitirLineaReal above, a failure here must NOT block or roll back the
+// emission, since the number is already in use (shown to the user, on a
+// downloadable PDF) by the time this runs. Failures are logged, not thrown; call
+// this without awaiting it, same as intentarEnvioEmail() at the call sites.
+export async function registrarInvoiceManual(lineaEmitida, { billingRepository } = {}) {
+  const tipo = lineaEmitida?.tipoFactura
+  if (!billingRepository || !TIPOS_CON_REGISTRO_MANUAL.includes(tipo)) return
+
+  try {
+    await billingRepository.recordManualInvoice({
+      clientId: esClienteIdReal(lineaEmitida.clienteId) ? idClienteReal(lineaEmitida.clienteId) : undefined,
+      billingEntityId: lineaEmitida.entidadId,
+      invoiceType: tipo,
+      invoiceNumber: lineaEmitida.nroFactura,
+      currency: lineaEmitida.moneda,
+      netAmount: lineaEmitida.importeNeto,
+      vatAmount: lineaEmitida.impuesto,
+      totalAmount: lineaEmitida.importeBruto,
+    })
+  } catch (err) {
+    console.error(
+      'No se pudo registrar el comprobante en arca-service (el número ya está asignado y en uso localmente):',
+      { tipoFactura: tipo, nroFactura: lineaEmitida.nroFactura, entidadId: lineaEmitida.entidadId, error: err?.message },
+    )
   }
 }
