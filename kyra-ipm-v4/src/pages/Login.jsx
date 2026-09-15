@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { user, signIn, error, clearError } = useAuth()
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
@@ -21,7 +21,7 @@ export default function Login() {
     event.preventDefault()
     setSubmitting(true)
     try {
-      await signIn(username, password)
+      await signIn(email, password)
       navigate(location.state?.from || '/dashboard', { replace: true })
     } catch {
       // AuthContext exposes a generic, non-enumerating message.
@@ -46,13 +46,14 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="login-form" aria-busy={submitting}>
             <div className="form-group">
-              <label htmlFor="login-username">Usuario</label>
+              <label htmlFor="login-email">Email</label>
               <input
-                id="login-username"
+                id="login-email"
                 className="form-input login-input"
-                value={username}
-                onChange={event => { setUsername(event.target.value); clearError() }}
-                autoComplete="username"
+                type="email"
+                value={email}
+                onChange={event => { setEmail(event.target.value); clearError() }}
+                autoComplete="email"
                 autoCapitalize="none"
                 spellCheck="false"
                 disabled={submitting}

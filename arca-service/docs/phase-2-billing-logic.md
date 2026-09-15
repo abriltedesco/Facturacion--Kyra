@@ -376,3 +376,30 @@ table, mirroring the durability the `invoices` table already gives A/B:
   (`console.error`) and swallowed, never thrown or rolled back — same rationale as
   `afip.js`'s CAE-persistence-failure handling, just one layer up since there's no
   AFIP here to have already committed the number.
+
+## Auth: login switched from username to email (2026-09-15, `feat/auth-email-login`)
+
+`POST /auth/login` now takes `{ email, password }` instead of `{ username,
+password }`. `username`/`display_name` are unchanged and stay on `public.users` as
+display-only fields (still used as a `displayName` fallback, e.g.
+`kyra-ipm-v4/src/components/Sidebar.jsx`) — only the auth credential moved.
+
+- `db/migrations/20260915150000_users_email_login.sql` — adds `users.email`
+  (unique case-insensitive, format-checked like `clients.primary_email`). Backfills
+  any pre-existing row with `<username>@wearekyra.com` before adding the `NOT NULL`
+  constraint, so this applies cleanly to an already-seeded database, not just a
+  fresh one — verified by running it against this machine's real dev `arca`
+  database (not just `arca_test`), which already had the one seeded user.
+- `src/lib/username.js` (`normalizeUsername`) is gone, replaced by
+  `src/lib/email.js` (`normalizeEmail`) — it was only ever used by `auth.js`.
+- `src/lib/jwt.js`/`middleware/authMiddleware.js`: the session JWT and `req.user`
+  now carry `email` alongside the existing `username`/`displayName`/`role`.
+- `db/seed.mjs`: the dev user's login is now `info@wearekyra.com` / `KyraLocal2026`
+  (username `mai` unchanged, still just a display field).
+- `kyra-ipm-v4`: `Login.jsx`/`AuthContext.jsx` updated to collect/send `email`
+  instead of `username`; `src/domain/authIdentity.js`'s `normalizeUsername` renamed
+  to `normalizeEmail` to match (it was already unused outside its own test, so this
+  is a clean rename, not a behavior change to anything wired in).
+- Verified end-to-end in the browser against the real dev database (not just the
+  test suite): logged in with `info@wearekyra.com` / `KyraLocal2026` and landed on
+  the real Dashboard.

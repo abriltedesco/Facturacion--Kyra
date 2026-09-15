@@ -24,7 +24,7 @@ createdb arca                 # or: psql -U postgres -c "create database arca"
 npm run db:up                 # docker compose up -d (postgres:16)
 
 npm run migrate                # runs db/migrations/ with node-pg-migrate
-npm run seed                   # dev data: user mai / KyraLocal2026, 3 entities, 12 clients
+npm run seed                   # dev data: info@wearekyra.com / KyraLocal2026, 3 entities, 12 clients
 npm run dev                    # node --watch server.js, http://localhost:3001
 ```
 
@@ -63,10 +63,12 @@ storage/             # gitignored — uploaded ARCA PDFs land here (STORAGE_DIR)
 
 ## Auth
 
-`POST /auth/login { username, password }` sets a signed httpOnly cookie
-(`arca_session`); the frontend must call with `credentials: 'include'`. There's no
-sign-up flow — users are provisioned directly in the `users` table (see `db/seed.mjs`
-for the pattern: bcrypt-hash the password, insert with a role).
+`POST /auth/login { email, password }` sets a signed httpOnly cookie
+(`arca_session`); the frontend must call with `credentials: 'include'`. Login is by
+`email` (unique, case-insensitive) — `username`/`display_name` still exist on
+`users` but are display-only now, not part of auth. There's no sign-up flow — users
+are provisioned directly in the `users` table (see `db/seed.mjs` for the pattern:
+bcrypt-hash the password, insert with a role).
 
 ## What's ported from Supabase, and what changed
 

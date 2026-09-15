@@ -10,6 +10,7 @@ export function authMiddleware(req, res, next) {
   }
   req.user = {
     id: payload.sub,
+    email: payload.email,
     username: payload.username,
     displayName: payload.displayName,
     role: payload.role,
