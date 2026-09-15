@@ -5,17 +5,23 @@ import { describe, expect, it } from 'vitest'
 import { calculateNetAndVat, determineCbteTipo } from '../src/services/afip.js'
 
 describe('determineCbteTipo', () => {
-  it('picks Factura A (1) for Responsable Inscripto', () => {
-    expect(determineCbteTipo('Responsable Inscripto')).toBe(1)
+  it('picks Factura A (1) for the RESPONSABLE_INSCRIPTO code', () => {
+    expect(determineCbteTipo('RESPONSABLE_INSCRIPTO')).toBe(1)
   })
 
-  it('is case- and whitespace-insensitive', () => {
-    expect(determineCbteTipo('  responsable INSCRIPTO  ')).toBe(1)
+  it('is insensitive to surrounding whitespace', () => {
+    expect(determineCbteTipo('  RESPONSABLE_INSCRIPTO  ')).toBe(1)
   })
 
-  it('picks Factura B (6) for every other domestic fiscal condition', () => {
-    expect(determineCbteTipo('Monotributista')).toBe(6)
-    expect(determineCbteTipo('Exento')).toBe(6)
+  it('picks Factura B (6) for every other fiscal condition code', () => {
+    expect(determineCbteTipo('MONOTRIBUTO')).toBe(6)
+    expect(determineCbteTipo('EXENTO')).toBe(6)
+  })
+
+  it('picks Factura B (6) for a display-name string, not just an unknown code', () => {
+    // Regression guard: this must NOT match, since .name is the free-text label
+    // any user can edit — only .code (set by migration/seed) may drive this.
+    expect(determineCbteTipo('Responsable Inscripto')).toBe(6)
   })
 
   it('picks Factura B (6) for empty/unexpected input rather than throwing', () => {

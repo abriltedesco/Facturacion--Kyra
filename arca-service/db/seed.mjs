@@ -79,13 +79,13 @@ async function seed() {
     `)
 
     await client.query(`
-      insert into public.fiscal_conditions (id, country_id, name, active) overriding system value values
-        (1, 1, 'Responsable Inscripto', true),
-        (2, 1, 'Monotributista', true),
-        (3, 1, 'Exento', true),
-        (4, 2, 'Régimen Común', true),
-        (5, 2, 'Régimen Simplificado', true),
-        (6, 3, 'Régimen Tradicional', true)
+      insert into public.fiscal_conditions (id, country_id, name, code, active) overriding system value values
+        (1, 1, 'Responsable Inscripto', 'RESPONSABLE_INSCRIPTO', true),
+        (2, 1, 'Monotributista', 'MONOTRIBUTO', true),
+        (3, 1, 'Exento', 'EXENTO', true),
+        (4, 2, 'Régimen Común', 'REGIMEN_COMUN', true),
+        (5, 2, 'Régimen Simplificado', 'REGIMEN_SIMPLIFICADO', true),
+        (6, 3, 'Régimen Tradicional', 'REGIMEN_TRADICIONAL', true)
       on conflict (id) do nothing
     `)
     await client.query(`

@@ -16,7 +16,7 @@ const CONCEPTO_SERVICIOS = 2
 const DOC_TIPO_CUIT = 80
 const IVA_21_ID = 5 // AFIP aliquot id for 21% (FEParamGetTiposIva)
 const IVA_RATE = 0.21
-const RESPONSABLE_INSCRIPTO = 'responsable inscripto'
+const RESPONSABLE_INSCRIPTO_CODE = 'RESPONSABLE_INSCRIPTO'
 
 // Lazily constructed: a missing/incomplete AFIP config shouldn't prevent the
 // rest of the service from booting, only fail when an invoice is requested.
@@ -62,10 +62,13 @@ function roundCents(value) {
 }
 
 // Rule: Responsable Inscripto receiver -> Factura A, any other domestic fiscal
-// condition -> Factura B. Exported (pure, no I/O) so this decision is unit-testable
-// without a DB or AFIP credentials.
-export function determineCbteTipo(fiscalConditionName) {
-  const isResponsableInscripto = String(fiscalConditionName || '').trim().toLowerCase() === RESPONSABLE_INSCRIPTO
+// condition -> Factura B. Keyed off fiscal_conditions.code (a stable identifier
+// set only by migrations/seed, not reachable from save_fiscal_condition or the
+// Administración catalog UI) rather than .name, which is a free-text label any
+// user can rename — see docs/phase-2-billing-logic.md. Exported (pure, no I/O)
+// so this decision is unit-testable without a DB or AFIP credentials.
+export function determineCbteTipo(fiscalConditionCode) {
+  const isResponsableInscripto = String(fiscalConditionCode || '').trim() === RESPONSABLE_INSCRIPTO_CODE
   return isResponsableInscripto ? CBTE_TIPO_FACTURA_A : CBTE_TIPO_FACTURA_B
 }
 
@@ -92,7 +95,7 @@ async function getClientFiscalInfo(clientId) {
        c.id,
        c.fiscal_id,
        co.code as country_code,
-       fc.name as fiscal_condition_name
+       fc.code as fiscal_condition_code
      from clients c
      join countries co on co.id = c.country_id
      join fiscal_conditions fc on fc.id = c.fiscal_condition_id
@@ -161,7 +164,7 @@ export async function generateInvoice({ clientId, totalAmount, actorId } = {}, d
     throw new AppError('AFIP_NOT_CONFIGURED', 'Falta configurar WSFE_PUNTO_VENTA.', 500)
   }
 
-  const cbteTipo = determineCbteTipo(client.fiscal_condition_name)
+  const cbteTipo = determineCbteTipo(client.fiscal_condition_code)
   const { netAmount, vatAmount } = calculateNetAndVat(amount)
   const docNro = Number(client.fiscal_id.replace(/\D/g, ''))
   const today = todayAfipDate()

@@ -99,14 +99,65 @@ Implemented and tested (46/46 in `npm test`), pushed to `origin/feat/arca-servic
 **Not done, needs a real AFIP cert:**
 - No real WSFE call has ever been made — `CUIT`/`CERT_PATH`/`KEY_PATH` are unset in
   every environment here (no certificate exists on this machine). Everything above
-  is verified up to that boundary only.
-- Nothing in `kyra-ipm-v4` (the frontend) calls `/billing/invoice` yet.
+  is verified up to that boundary only. `WSFE_PUNTO_VENTA` is also unset, so today
+  every real call from the frontend stops at a clean `AFIP_NOT_CONFIGURED` before
+  ever reaching AFIP — see below.
 
-**Known fragility, not yet addressed:** `determineCbteTipo()` matches on
-`fiscal_conditions.name` text (`"responsable inscripto"`, case/trim-insensitive).
-That catalog row is editable via the existing `save_fiscal_condition` RPC/admin UI —
-renaming it would silently misroute every invoice to Factura B. No blocking constraint
-exists on it today.
+**Fragility fixed (2026-09-13):** `determineCbteTipo()` used to match on
+`fiscal_conditions.name` text (`"responsable inscripto"`, case/trim-insensitive) — a
+free-text label editable by any authenticated user via `save_fiscal_condition`
+(no role check exists on that route) and by the Administración catalog UI
+(`CatalogsModal.jsx`, plain "Nombre" input). Renaming that row would have silently
+misrouted every Factura A to Factura B, with no error and no test catching it, and
+because AFIP has already issued the CAE by the time anything downstream notices,
+there's no clean undo — only Notas de Crédito and re-emission.
 
-Commits: `99ae81d` (emission), `017ad8f` (persistence + testability). Both on
-`feat/arca-service`, pushed to GitHub, not merged to `main`.
+Fix: `fiscal_conditions` now has a `code` column
+(`db/migrations/20260913130000_fiscal_condition_codes.sql`) — a stable identifier
+seeded once (`RESPONSABLE_INSCRIPTO`, `MONOTRIBUTO`, `EXENTO`, ...) that
+`save_fiscal_condition` deliberately does not accept as a parameter, so it is not
+reachable from the catalog CRUD route or admin UI. `determineCbteTipo()` and the
+`getClientFiscalInfo` query in `src/services/afip.js` now key off `fc.code`, not
+`fc.name`. `.name` stays a purely cosmetic, freely-editable display label — renaming
+it can no longer affect invoice routing. `test/afip.unit.test.js` has a regression
+test asserting the display-name string (`"Responsable Inscripto"`) does NOT match.
+
+The role-check gap on `/catalogs/*` write routes (any authenticated user can rewrite
+any catalog, not just fiscal conditions) is a separate, broader issue — not addressed
+here, flagged for follow-up.
+
+Commits: `99ae81d` (emission), `017ad8f` (persistence + testability),
+`fiscal_condition_codes` migration (this fix). All on `feat/arca-service`, pushed to
+GitHub, not merged to `main`.
+
+## Frontend wired to real emission (2026-09-13, kyra-ipm-v4 side)
+
+`kyra-ipm-v4`'s "Emisión"/"Facturación del mes" pages were previously 100% frontend
+simulation (`utils/emisionARCA.js`, a fake `setTimeout` CAE generator) built on a
+hardcoded mock client/service roster (`data/clientes.js`, `data/servicios.js`) with
+no id relationship to the real `clients` table. `kyra-ipm-v4/src/pages/FacturacionMes.jsx`
+and `EmisionPage.jsx` now call the real `POST /billing/invoice` for Factura A/B lines
+attached to a real client, through a new `src/services/billingRepository.js` (same
+factory-over-injected-`client` pattern as `clientRepository.js`) and
+`src/services/emisionService.js` (the one place in the frontend allowed to produce a
+real CAE — both pages call it instead of each keeping separate emit logic, closing a
+pre-existing divergence where `FacturacionMes.jsx` had its own emit path that never
+even simulated a CAE).
+
+Two correctness details worth knowing if touching this again:
+- Mock client ids (1-12) and arca-service's seeded client ids (also 1-12, today)
+  collide. `kyra-ipm-v4/src/domain/clienteLookup.js` tags a real client's id with a
+  `+100000` offset wherever it's stored on a línea, specifically so a pre-existing
+  mock línea with tipoFactura A/B never gets misrouted into a real WSFE call against
+  whichever real client happens to share its small numeric id.
+  `emisionService.esFacturaWsfeElegible()` requires both tipoFactura A/B **and** a
+  real (offset-tagged) clienteId before ever calling the backend.
+- `generateInvoice` hardcodes ARS (`MonId: 'PES'`) — the frontend blocks real
+  emission for a non-ARS línea with a clear error rather than silently billing it in
+  pesos.
+
+Known gaps, deliberately left open in this pass: real clients have no `servicio`
+catalog (`servicios.js` only references mock client ids), so the "nueva línea" form
+skips that step for a real client and takes the amount directly; the real `clients`
+schema has no address field, so a real client's generated invoice PDF (`generarPDFafip.js`,
+needs `cliente.direccion`) will show it blank until that field exists on the backend.
