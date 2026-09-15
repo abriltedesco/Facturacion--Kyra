@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs'
 import { pool, withTransaction, closePool } from '../src/db/pool.js'
 
 const DEV_USER_ID = '11111111-1111-4111-8111-111111111111'
+const DEV_USER_EMAIL = 'info@wearekyra.com'
 const DEV_USER_PASSWORD = 'KyraLocal2026'
 
 async function seed() {
@@ -14,13 +15,14 @@ async function seed() {
 
   await withTransaction(async client => {
     await client.query(
-      `insert into public.users (id, username, display_name, password_hash, role)
-       values ($1, 'mai', 'Mai Brandao', $2, 'admin')
+      `insert into public.users (id, username, display_name, email, password_hash, role)
+       values ($1, 'mai', 'Mai Brandao', $2, $3, 'admin')
        on conflict (id) do update
          set password_hash = excluded.password_hash,
              display_name = excluded.display_name,
+             email = excluded.email,
              role = excluded.role`,
-      [DEV_USER_ID, passwordHash],
+      [DEV_USER_ID, DEV_USER_EMAIL, passwordHash],
     )
 
     await client.query(`
@@ -155,7 +157,7 @@ async function seed() {
   })
 
   const { rows } = await pool.query('select count(*)::int as clients from public.clients')
-  console.log(`Seed complete. users: mai / ${DEV_USER_PASSWORD}  |  clients: ${rows[0].clients}`)
+  console.log(`Seed complete. users: ${DEV_USER_EMAIL} / ${DEV_USER_PASSWORD}  |  clients: ${rows[0].clients}`)
 }
 
 seed()

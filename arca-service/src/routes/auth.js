@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 import { config } from '../config.js'
 import { pool } from '../db/pool.js'
 import { signSession } from '../lib/jwt.js'
-import { normalizeUsername } from '../lib/username.js'
+import { normalizeEmail } from '../lib/email.js'
 import { authMiddleware } from '../middleware/authMiddleware.js'
 import { AppError } from '../middleware/errorHandler.js'
 
@@ -20,22 +20,22 @@ function cookieOptions() {
 }
 
 function publicUser(row) {
-  return { id: row.id, username: row.username, displayName: row.display_name, role: row.role }
+  return { id: row.id, email: row.email, username: row.username, displayName: row.display_name, role: row.role }
 }
 
 authRouter.post('/login', async (req, res, next) => {
   try {
-    const username = normalizeUsername(req.body?.username)
+    const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
-    if (!username || !password) {
-      throw new AppError('INVALID_CREDENTIALS', 'Ingresá un usuario y una clave válidos.', 401)
+    if (!email || !password) {
+      throw new AppError('INVALID_CREDENTIALS', 'Ingresá un email y una clave válidos.', 401)
     }
 
-    const { rows } = await pool.query('select * from public.users where lower(username) = $1', [username])
+    const { rows } = await pool.query('select * from public.users where lower(email) = $1', [email])
     const user = rows[0]
     const passwordOk = user ? await bcrypt.compare(password, user.password_hash) : false
     if (!user || !passwordOk) {
-      throw new AppError('INVALID_CREDENTIALS', 'Usuario o clave incorrectos.', 401)
+      throw new AppError('INVALID_CREDENTIALS', 'Email o clave incorrectos.', 401)
     }
 
     const token = signSession(user)
@@ -52,5 +52,5 @@ authRouter.post('/logout', (req, res) => {
 })
 
 authRouter.get('/session', authMiddleware, (req, res) => {
-  res.json({ user: { id: req.user.id, username: req.user.username, displayName: req.user.displayName, role: req.user.role } })
+  res.json({ user: { id: req.user.id, email: req.user.email, username: req.user.username, displayName: req.user.displayName, role: req.user.role } })
 })

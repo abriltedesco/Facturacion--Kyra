@@ -26,20 +26,20 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  async function signIn(username, password) {
+  async function signIn(email, password) {
     setError('')
-    if (!username || !password) {
-      const credentialsError = 'Ingresá un usuario y una clave válidos.'
+    if (!email || !password) {
+      const credentialsError = 'Ingresá un email y una clave válidos.'
       setError(credentialsError)
       throw new Error(credentialsError)
     }
 
     try {
-      const data = await api.post('/auth/login', { username, password })
+      const data = await api.post('/auth/login', { email, password })
       setUser(data.user)
       return data.user
     } catch {
-      const credentialsError = 'Usuario o clave incorrectos.'
+      const credentialsError = 'Email o clave incorrectos.'
       setError(credentialsError)
       throw new Error(credentialsError)
     }

@@ -10,7 +10,7 @@ export function agent() {
 
 export async function loginAgent() {
   const client = agent()
-  await client.post('/auth/login').send({ username: 'mai', password: 'KyraLocal2026' }).expect(200)
+  await client.post('/auth/login').send({ email: 'info@wearekyra.com', password: 'KyraLocal2026' }).expect(200)
   return client
 }
 
