@@ -161,3 +161,119 @@ catalog (`servicios.js` only references mock client ids), so the "nueva línea" 
 skips that step for a real client and takes the amount directly; the real `clients`
 schema has no address field, so a real client's generated invoice PDF (`generarPDFafip.js`,
 needs `cliente.direccion`) will show it blank until that field exists on the backend.
+
+## Open items raised by Fran (2026-09-15)
+
+### Factura C — future, not started
+Confirmed roadmap idea, not scheduled: add a third voucher type, "Factura C", proper
+for the "persona a persona" activity. Not implemented and no design exists yet.
+Flagged complication (Fran's read, not yet confirmed with the Kyra supervisor): this
+activity's billing is small enough that the supervisor currently invoices it from her
+own personal account rather than through Kyra SRL, which may mean this case doesn't
+fit the current `billing_entities` = issuer model at all. Needs a decision from the
+supervisor before any design work starts — don't build against this until that's
+resolved.
+
+### LLC (Mercury LLC) invoice — suggestion, partially already built
+Today Kyra fills Mercury LLC's invoice template manually. Fran's suggestion: a small
+system that fills in the known fields and lets the admin download the finished PDF —
+explicitly marked as a suggestion, not a committed task.
+
+Worth knowing before building this: it's already mostly there on the frontend.
+[`generarPDFllc.js`](../../kyra-ipm-v4/src/utils/generarPDFllc.js) generates the
+Mercury LLC invoice PDF entirely client-side with jsPDF, pulling real entity data
+(name, fiscal address, bank accounts) from the real `entities`/`billing_entities`
+backend via `useEntities()` — not mock data. What's actually missing vs. Fran's
+suggestion:
+- No backend involvement at all — the PDF is built and downloaded in the browser,
+  with no server-side record of it (unlike WSFE invoices, which now persist to the
+  `invoices` table for an audit trail). An LLC invoice today leaves no trace once the
+  browser tab closes.
+- No invoice numbering/audit trail equivalent to the WSFE `(punto_venta, cbte_tipo,
+  voucher_number)` uniqueness guarantee — nothing stops two people generating the
+  same invoice number, or losing track of what's already been issued.
+
+If this gets picked up, the natural shape is: keep field-filling as-is (or move it to
+the backend), but persist an LLC invoice record the same way `invoices` does for WSFE,
+so there's one audit trail for both entities instead of one real and one PDF-only.
+
+### Real AFIP calls — what's needed from the Kyra supervisor
+Nothing here has changed since the [Status](#status-2026-09-13) section above — still
+zero real WSFE calls made, because these are unset in every environment on this
+machine. To test the real path, ask the supervisor for:
+- **CUIT** of Kyra SRL (the AFIP tax id of the issuer entity — an 11-digit number,
+  distinct from a CUIL, which is the personal id AFIP issues to individuals).
+- **WSFE certificate + private key** (`.crt` / `.key` files) issued by AFIP for that
+  CUIT, authorized for the "Facturación Electrónica" / WSFE web service specifically.
+  These go on disk (never committed — see `arca-service/.gitignore`) and are pointed
+  to by the `CERT_PATH` / `KEY_PATH` env vars.
+- **Which AFIP environment to test against**: homologación (AFIP's sandbox, safe to
+  throw test invoices at) vs. producción (real, counts as a real legal invoice with
+  no undo — see the fragility note above about Notas de Crédito being the only
+  correction path). Homologación should come first regardless.
+- **The WSFE Punto de Venta number** — see the next section for what this actually is
+  and why it's a separate question from the certificate.
+
+None of the four above exist in this environment yet. Until they do, `POST
+/billing/invoice` will keep stopping cleanly at `AFIP_NOT_CONFIGURED` — which is
+correct, expected behavior, not a bug.
+
+### "Punto de Venta" — explained
+An AFIP "Punto de Venta" (POV) is a numbered sales point that a company registers
+with AFIP before it's allowed to emit invoices through it. It's not something the
+software invents — it's a number that exists in AFIP's own records for Kyra SRL's
+CUIT, and every invoice number AFIP hands out is scoped to one specific POV (POV 1's
+invoice #1, #2, #3... is a completely separate sequence from POV 2's invoice #1, #2...).
+
+The reason it matters here: a single company can have *multiple* POVs registered for
+different purposes — e.g. one for a physical point-of-sale/manual invoice book, and a
+separate one specifically authorized for "Comprobantes en línea" (the type of POV
+required for WSFE, the web-service API this system uses). They are not
+interchangeable — AFIP will reject a WSFE call made with a POV number that wasn't
+registered as a web-service POV, even if that number is valid for some other purpose.
+
+The open problem flagged in this repo: `billing_entities` already stores a
+`point_of_sale` value per entity (used elsewhere, e.g. shown in the Administración
+UI), and separately there's a `WSFE_PUNTO_VENTA` env var that `arca-service` actually
+uses when calling AFIP. Nobody has confirmed whether these are supposed to be the
+*same* number or genuinely different ones — the code deliberately does NOT assume
+they match (see `src/config.js`), because guessing wrong here would mean invoices
+either get rejected by AFIP or numbered under the wrong POV with no easy fix.
+
+**What to ask the supervisor:** "What is the Punto de Venta number AFIP has
+registered for Kyra SRL under 'Facturación Electrónica – Comprobantes en línea'
+specifically?" That number is what goes into `WSFE_PUNTO_VENTA` — separately from,
+and not necessarily equal to, whatever `point_of_sale` is already saved on the Kyra
+SRL entity row today.
+
+### Security — single admin user (reaffirmed)
+Fran confirmed the target shape directly: the system will have exactly one user, and
+that user is an admin who can do everything. This is consistent with, and firms up,
+the earlier open question — see the linked memory for the full history and current
+status of supervisor sign-off.
+
+### Frontend — known problems, and a process note
+Consolidated list of what's known-incomplete on the `kyra-ipm-v4` billing/emisión
+pages as of this date (numbered gaps above repeated here for one place to check):
+1. Real clients have no `servicio` catalog — the "nueva línea" form skips that step
+   for them and takes the amount directly (`servicios.js` only has mock client ids).
+2. The real `clients` schema has no address field yet, so a real client's WSFE
+   invoice PDF (`generarPDFafip.js`) renders with a blank address.
+3. Mock client ids (1-12) and real seeded client ids collide; `clienteLookup.js`'s
+   `+100000` offset tag is the only thing preventing a mock línea from being
+   misrouted into a real WSFE call — fragile by construction, worth a cleaner fix
+   once mock data is retired.
+4. `generateInvoice` hardcodes ARS; a non-ARS línea is blocked from real emission
+   with an error rather than silently billed wrong, but there's no real multi-currency
+   support.
+5. LLC (Mercury LLC) invoices have no backend/audit trail — see the LLC section above.
+6. Large parts of the rest of the app (`Ingresos.jsx`, `Egresos.jsx`, `Emails.jsx`,
+   `Dashboard.jsx`, `Administracion.jsx`, email sending) are still on mock data /
+   simulated behavior, unrelated to this billing work but worth knowing they're not
+   real yet if anyone assumes otherwise.
+
+**Process note:** Fran is doing backend work on this project; a teammate is expected
+to be the one making frontend changes. Before making or proposing a frontend change,
+call out what's being touched and why, so whoever is driving the frontend work is
+acting with full context rather than being surprised by a change — flag it in chat
+before editing, don't just make the change silently.
