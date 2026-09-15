@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "arca-service",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "arca-service",
+      "port": 3001
+    },
+    {
+      "name": "kyra-ipm-v4",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "kyra-ipm-v4",
+      "port": 5173
+    }
+  ]
+}

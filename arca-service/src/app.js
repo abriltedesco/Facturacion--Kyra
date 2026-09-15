@@ -1,0 +1,37 @@
+import express from 'express'
+import cors from 'cors'
+import cookieParser from 'cookie-parser'
+
+import { config } from './config.js'
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
+import { authRouter } from './routes/auth.js'
+import { entitiesRouter } from './routes/entities.js'
+import { clientsRouter } from './routes/clients.js'
+import { catalogsRouter } from './routes/catalogs.js'
+import { filesRouter } from './routes/files.js'
+import { billingRouter } from './routes/billing.js'
+import { authMiddleware } from './middleware/authMiddleware.js'
+
+export function createApp() {
+  const app = express()
+
+  app.use(cors({ origin: config.corsOrigin, credentials: true }))
+  app.use(express.json())
+  app.use(cookieParser())
+
+  app.get('/', (req, res) => {
+    res.json({ status: 'ok', service: 'arca-service' })
+  })
+
+  app.use('/auth', authRouter)
+  app.use('/entities', authMiddleware, entitiesRouter)
+  app.use('/clients', authMiddleware, clientsRouter)
+  app.use(authMiddleware, catalogsRouter) // /countries, /fiscal-conditions, /tax-categories
+  app.use('/billing', authMiddleware, billingRouter)
+  app.use('/files', filesRouter)
+
+  app.use(notFoundHandler)
+  app.use(errorHandler)
+
+  return app
+}

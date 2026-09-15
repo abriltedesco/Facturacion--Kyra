@@ -27,12 +27,11 @@ function AppLoading() {
 }
 
 function ProtectedApp() {
-  const { session, loading, isConfigured } = useAuth()
+  const { user, loading } = useAuth()
   const location = useLocation()
 
   if (loading) return <AppLoading />
-  if (!isConfigured) return <Navigate to="/login" replace />
-  if (!session) {
+  if (!user) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   }
 

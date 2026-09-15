@@ -44,15 +44,6 @@ export function mapClientRow(row) {
   }
 }
 
-const CLIENT_SELECT = `
-  *,
-  ccEmails:client_emails(*),
-  country:countries(*),
-  fiscalCondition:fiscal_conditions!clients_fiscal_condition_country_fkey(*),
-  taxCategory:tax_categories(*),
-  billingEntity:billing_entities(*)
-`
-
 export class ClientRepositoryError extends Error {
   constructor(message, code, cause) {
     super(message, { cause })
@@ -99,99 +90,120 @@ function ccEmailsPayload(ccEmails) {
 }
 
 export function createClientRepository(client) {
-  if (!client) throw new ClientRepositoryError('Supabase no está configurado.', 'SUPABASE_NOT_CONFIGURED')
+  if (!client) throw new ClientRepositoryError('El servicio de facturación no está configurado.', 'API_NOT_CONFIGURED')
 
   async function getById(id) {
-    const { data, error } = await client
-      .from('clients')
-      .select(CLIENT_SELECT)
-      .eq('id', id)
-      .single()
-    if (error) throw repositoryError(error)
-    return mapClientRow(data)
+    try {
+      return mapClientRow(await client.get(`/clients/${id}`))
+    } catch (error) {
+      throw repositoryError(error)
+    }
   }
 
   return {
     async list() {
-      const { data, error } = await client
-        .from('clients')
-        .select(CLIENT_SELECT)
-        .order('name', { ascending: true })
-      if (error) throw repositoryError(error)
-      return (data || []).map(mapClientRow)
+      try {
+        const rows = await client.get('/clients')
+        return (rows || []).map(mapClientRow)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     getById,
 
     async save(clientDraft) {
-      const { data, error } = await client.rpc('save_client', {
-        p_client: clientPayload(clientDraft),
-        p_cc_emails: ccEmailsPayload(clientDraft.ccEmails),
-        p_expected_updated_at: clientDraft.id ? clientDraft.updatedAt : null,
-      })
-      if (error) throw repositoryError(error)
-      return getById(data.id)
+      try {
+        const saved = await client.post('/clients', {
+          client: clientPayload(clientDraft),
+          ccEmails: ccEmailsPayload(clientDraft.ccEmails),
+          expectedUpdatedAt: clientDraft.id ? clientDraft.updatedAt : null,
+        })
+        return mapClientRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async setStatus(clientDraft, status) {
-      const { data, error } = await client.rpc('set_client_status', {
-        p_client_id: clientDraft.id,
-        p_status: status,
-        p_expected_updated_at: clientDraft.updatedAt,
-      })
-      if (error) throw repositoryError(error)
-      return getById(data.id)
+      try {
+        const saved = await client.patch(`/clients/${clientDraft.id}/status`, {
+          status,
+          expectedUpdatedAt: clientDraft.updatedAt,
+        })
+        return mapClientRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async listCountries() {
-      const { data, error } = await client.from('countries').select('*').order('name', { ascending: true })
-      if (error) throw repositoryError(error)
-      return (data || []).map(mapCountryRow)
+      try {
+        const rows = await client.get('/countries')
+        return (rows || []).map(mapCountryRow)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async listFiscalConditions() {
-      const { data, error } = await client.from('fiscal_conditions').select('*').order('name', { ascending: true })
-      if (error) throw repositoryError(error)
-      return (data || []).map(mapFiscalConditionRow)
+      try {
+        const rows = await client.get('/fiscal-conditions')
+        return (rows || []).map(mapFiscalConditionRow)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async listTaxCategories() {
-      const { data, error } = await client.from('tax_categories').select('*').order('name', { ascending: true })
-      if (error) throw repositoryError(error)
-      return (data || []).map(mapTaxCategoryRow)
+      try {
+        const rows = await client.get('/tax-categories')
+        return (rows || []).map(mapTaxCategoryRow)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async saveCountry(country) {
-      const { data, error } = await client.rpc('save_country', {
-        p_id: country.id || null,
-        p_code: country.code,
-        p_name: country.name,
-        p_active: country.active ?? true,
-      })
-      if (error) throw repositoryError(error)
-      return mapCountryRow(data)
+      try {
+        const saved = await client.post('/countries', {
+          id: country.id || null,
+          code: country.code,
+          name: country.name,
+          active: country.active ?? true,
+        })
+        return mapCountryRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async saveFiscalCondition(condition) {
-      const { data, error } = await client.rpc('save_fiscal_condition', {
-        p_id: condition.id || null,
-        p_country_id: condition.countryId,
-        p_name: condition.name,
-        p_active: condition.active ?? true,
-      })
-      if (error) throw repositoryError(error)
-      return mapFiscalConditionRow(data)
+      try {
+        const saved = await client.post('/fiscal-conditions', {
+          id: condition.id || null,
+          countryId: condition.countryId,
+          name: condition.name,
+          active: condition.active ?? true,
+        })
+        return mapFiscalConditionRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
 
     async saveTaxCategory(category) {
-      const { data, error } = await client.rpc('save_tax_category', {
-        p_id: category.id || null,
-        p_name: category.name,
-        p_tax_rate: category.taxRate,
-        p_active: category.active ?? true,
-      })
-      if (error) throw repositoryError(error)
-      return mapTaxCategoryRow(data)
+      try {
+        const saved = await client.post('/tax-categories', {
+          id: category.id || null,
+          name: category.name,
+          taxRate: category.taxRate,
+          active: category.active ?? true,
+        })
+        return mapTaxCategoryRow(saved)
+      } catch (error) {
+        throw repositoryError(error)
+      }
     },
   }
 }

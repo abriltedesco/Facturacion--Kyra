@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import { createEntityRepository } from '../services/entityRepository'
 
 const EntitiesContext = createContext(null)
-const defaultRepository = supabase ? createEntityRepository(supabase) : null
+const defaultRepository = createEntityRepository(api)
 
 function sortEntities(entities) {
   return [...entities].sort((left, right) => left.name.localeCompare(right.name, 'es'))
@@ -16,7 +16,7 @@ export function EntitiesProvider({ children, repository = defaultRepository }) {
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!repository) {
-      setError('Supabase no está configurado.')
+      setError('El servicio de facturación no está configurado.')
       setLoading(false)
       return []
     }

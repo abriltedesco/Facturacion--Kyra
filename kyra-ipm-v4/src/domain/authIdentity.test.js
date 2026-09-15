@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { usernameToTechnicalEmail } from './authIdentity'
+import { normalizeUsername } from './authIdentity'
 
-describe('usernameToTechnicalEmail', () => {
-  it('normaliza el usuario y rechaza identificadores fuera del dominio interno', () => {
-    expect(usernameToTechnicalEmail('  Mai.Brandao  ', 'kyra.internal')).toBe('mai.brandao@kyra.internal')
-    expect(usernameToTechnicalEmail('mai@externo.com', 'kyra.internal')).toBe(null)
+describe('normalizeUsername', () => {
+  it('recorta espacios y pasa a minúsculas los identificadores válidos', () => {
+    expect(normalizeUsername('  Mai.Brandao  ')).toBe('mai.brandao')
+  })
+
+  it('rechaza identificadores demasiado cortos o con caracteres inválidos', () => {
+    expect(normalizeUsername('ma')).toBe(null)
+    expect(normalizeUsername('mai@externo.com')).toBe(null)
   })
 })
