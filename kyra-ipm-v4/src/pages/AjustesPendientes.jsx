@@ -1,24 +1,11 @@
 import { useState, useEffect } from 'react'
-import { AJUSTES_INICIAL } from '../data/ajustes'
-import { HISTORIAL_PERIODOS } from '../data/historialPeriodos'
-import { CLIENTES_INICIAL } from '../data/clientes'
-import { SERVICIOS_INICIAL } from '../data/servicios'
-import { useEntities } from '../context/EntitiesContext'
+import Modal from '../components/Modal'
+import { useIpcAdjustments } from '../context/IpcAdjustmentsContext'
+import { calcularMontoDespues, validateGenerateDraft } from '../domain/ipcRules'
 
-// ── Período actual ────────────────────────────────────────────────────────────
-const MES_ACTUAL = 'agosto'
-const ANIO_ACTUAL = 2026
-const MES_SIGUIENTE = 'septiembre'
-const TIPOS_AJUSTE = ['IPC', 'Manual', 'Comercial']
-
-// ── Funciones puras ───────────────────────────────────────────────────────────
-
-function calcularMontoDespues(montoAntes, porcentaje) {
-  const m = parseFloat(montoAntes)
-  const p = parseFloat(porcentaje)
-  if (isNaN(m) || m <= 0 || isNaN(p) || p < 0) return null
-  return Math.round(m * (1 + p / 100))
-}
+const MES_NOMBRES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+const TIPOS_AJUSTE = ['ipc', 'manual', 'comercial']
+const TIPO_AJUSTE_LABEL = { ipc: 'IPC', manual: 'Manual', comercial: 'Comercial' }
 
 function formatARS(valor) {
   if (valor === null || valor === undefined || valor === '') return '—'
@@ -31,18 +18,6 @@ function formatPct(pct, plus = true) {
   const n = parseFloat(pct)
   if (isNaN(n)) return '—'
   return (plus && n > 0 ? '+' : '') + n.toFixed(1).replace('.', ',') + '%'
-}
-
-// ── Lookups ───────────────────────────────────────────────────────────────────
-
-function useCliente(clienteId) {
-  return CLIENTES_INICIAL.find(c => c.id === clienteId) || null
-}
-
-function getEntidadDeCliente(clienteId, entities) {
-  const c = CLIENTES_INICIAL.find(cl => cl.id === clienteId)
-  if (!c) return null
-  return entities.find(entity => String(entity.id) === String(c.entidadEmisoraId)) || null
 }
 
 // ── Atoms UI ──────────────────────────────────────────────────────────────────
@@ -124,40 +99,36 @@ function StatCard({ label, count, color, active, onClick }) {
 
 // ── Card: Necesitan revisión ──────────────────────────────────────────────────
 
-function CardRevision({ ajuste, servicios, entities, onEditar }) {
-  const cliente = useCliente(ajuste.clienteId)
-  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
-  const svc = servicios.find(s => s.id === ajuste.servicioId)
-  const montoDespues = calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
+function CardRevision({ ajuste, onEditar }) {
+  const montoDespues = calcularMontoDespues(ajuste.amountBefore, ajuste.ipcPercentage)
 
   return (
     <div style={{
       background: '#fff',
-      border: '1.5px solid ' + (ajuste.alertaAumentoSignificativo ? '#fcd34d' : '#e5e7eb'),
+      border: '1.5px solid ' + (ajuste.significantIncrease ? '#fcd34d' : '#e5e7eb'),
       borderRadius: 12, padding: '18px 22px', marginBottom: 12,
-      boxShadow: ajuste.alertaAumentoSignificativo ? '0 2px 8px #fef3c750' : '0 1px 3px #0001',
+      boxShadow: ajuste.significantIncrease ? '0 2px 8px #fef3c750' : '0 1px 3px #0001',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
 
         {/* Info cliente + servicio */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{ajuste.clientName || '—'}</span>
             <TagCliente />
-            {ajuste.alertaAumentoSignificativo && <BadgeAlerta alerta={true} />}
+            {ajuste.significantIncrease && <BadgeAlerta alerta={true} />}
           </div>
           <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-            <span>{entidad?.name || '—'}</span>
+            <span>{ajuste.billingEntityName || '—'}</span>
             <span>·</span>
-            <span>Factura {cliente?.tipoFactura || '—'}</span>
+            <span>{ajuste.defaultVoucher || '—'}</span>
             <span>·</span>
-            <span>{svc?.moneda || 'ARS'}</span>
+            <span>{ajuste.serviceCurrency || 'ARS'}</span>
             <span>·</span>
-            <BadgeImpacto nivel={ajuste.impactoNivel} />
+            <BadgeImpacto nivel={ajuste.impactLevel} />
           </div>
           <div style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>
-            {svc?.nombre || '—'}
-            {svc?.descripcion ? <span style={{ color: '#9ca3af', fontWeight: 400 }}> — {svc.descripcion}</span> : null}
+            {ajuste.serviceName || '—'}
           </div>
         </div>
 
@@ -168,10 +139,10 @@ function CardRevision({ ajuste, servicios, entities, onEditar }) {
           minWidth: 160,
         }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Ajuste IPC</div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: '#4f46e5', lineHeight: 1 }}>{formatPct(ajuste.porcentajeIPC)}</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#4f46e5', lineHeight: 1 }}>{formatPct(ajuste.ipcPercentage)}</div>
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
-            {ajuste.montoAntes !== null
-              ? <>antes {formatARS(ajuste.montoAntes)}<br />ahora {formatARS(montoDespues)}</>
+            {ajuste.amountBefore !== null
+              ? <>antes {formatARS(ajuste.amountBefore)}<br />ahora {formatARS(montoDespues)}</>
               : <span style={{ color: '#d97706', fontWeight: 600 }}>Sin precio definido</span>
             }
           </div>
@@ -198,13 +169,10 @@ function CardRevision({ ajuste, servicios, entities, onEditar }) {
 
 // ── Card: Listas para aprobar / Aprobadas ─────────────────────────────────────
 
-function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, esHistorial }) {
-  const cliente = useCliente(ajuste.clienteId)
-  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
-  const svc = servicios.find(s => s.id === ajuste.servicioId)
-  const montoDespues = ajuste.montoDespues ?? calcularMontoDespues(ajuste.montoAntes, ajuste.porcentajeIPC)
+function CardAprobacion({ ajuste, onAprobar, onRechazar, esHistorial }) {
+  const montoDespues = ajuste.amountAfter ?? calcularMontoDespues(ajuste.amountBefore, ajuste.ipcPercentage)
   const impactoMensual = (ajuste.montoAntes !== null && montoDespues !== null)
-    ? montoDespues - ajuste.montoAntes : null
+    ? montoDespues - ajuste.amountBefore : null
 
   return (
     <div style={{
@@ -218,21 +186,21 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
         {/* Columna izq: monto grande */}
         <div style={{ minWidth: 200 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{ajuste.clientName || '—'}</span>
             <TagCliente />
           </div>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
-            {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+            {ajuste.billingEntityName || '—'} · {ajuste.defaultVoucher || '—'} · {ajuste.serviceCurrency || 'ARS'}
           </div>
           <div style={{ fontSize: 32, fontWeight: 800, color: '#111827', lineHeight: 1 }}>
             {formatARS(montoDespues)}
           </div>
           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
-            a aplicar en {MES_SIGUIENTE}
+            período {MES_NOMBRES[ajuste.periodMonth - 1]} {ajuste.periodYear}
           </div>
-          {esHistorial && ajuste.fechaAprobacion && (
+          {esHistorial && ajuste.approvedAt && (
             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
-              Aprobado: {ajuste.fechaAprobacion}
+              {ajuste.status === 'aprobada' ? 'Aprobado' : 'Rechazado'}: {ajuste.approvedAt.slice(0, 10)}
             </div>
           )}
         </div>
@@ -240,17 +208,17 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
         {/* Centro: detalle IPC */}
         <div style={{ flex: 1, borderLeft: '1px solid #f3f4f6', paddingLeft: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5 }}>Ajuste IPC</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#4f46e5', marginBottom: 5 }}>{formatPct(ajuste.porcentajeIPC)}</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: '#4f46e5', marginBottom: 5 }}>{formatPct(ajuste.ipcPercentage)}</div>
           <div style={{ fontSize: 13, color: '#374151', marginBottom: 5 }}>
-            Antes: {formatARS(ajuste.montoAntes)} → Ahora: {formatARS(montoDespues)}
+            Antes: {formatARS(ajuste.amountBefore)} → Ahora: {formatARS(montoDespues)}
           </div>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
-            Margen proyectado: +{ajuste.contexto?.margenProyectado ?? '—'}%
+            Último aumento registrado: {ajuste.lastIncreaseDate ? ajuste.lastIncreaseDate.slice(0, 10) : 'sin registros'}
           </div>
-          <BadgeAlerta alerta={ajuste.alertaAumentoSignificativo} />
-          {ajuste.motivo && (
+          <BadgeAlerta alerta={ajuste.significantIncrease} />
+          {ajuste.reason && (
             <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8, fontStyle: 'italic' }}>
-              "{ajuste.motivo}"
+              "{ajuste.reason}"
             </div>
           )}
         </div>
@@ -258,8 +226,7 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
         {/* Columna der: servicio + acciones */}
         <div style={{ minWidth: 180, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{svc?.nombre || '—'}</div>
-            {svc?.descripcion && <div style={{ fontSize: 12, color: '#9ca3af' }}>{svc.descripcion}</div>}
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{ajuste.serviceName || '—'}</div>
             {impactoMensual !== null && (
               <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
                 Impacto: +{formatARS(impactoMensual)}/mes
@@ -270,7 +237,7 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
           {!esHistorial ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button
-                onClick={() => onRechazar(ajuste.id)}
+                onClick={() => onRechazar(ajuste)}
                 style={{
                   padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
                   color: '#dc2626', background: '#fff', border: '1.5px solid #fca5a5',
@@ -278,7 +245,7 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
                 }}
               >RECHAZAR ×</button>
               <button
-                onClick={() => onAprobar(ajuste.id)}
+                onClick={() => onAprobar(ajuste)}
                 style={{
                   padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
                   color: '#fff', background: '#4f46e5', border: 'none', cursor: 'pointer',
@@ -297,13 +264,30 @@ function CardAprobacion({ ajuste, servicios, entities, onAprobar, onRechazar, es
 
 // ── Historial de períodos ─────────────────────────────────────────────────────
 
-function TabHistorial() {
+function TabHistorial({ adjustments }) {
+  const periodos = {}
+  adjustments
+    .filter(a => a.status === 'aprobada' || a.status === 'rechazada')
+    .forEach(a => {
+      const key = a.periodYear + '-' + a.periodMonth
+      if (!periodos[key]) {
+        periodos[key] = { mes: MES_NOMBRES[a.periodMonth - 1], anio: a.periodYear, porcentajeIPC: a.ipcPercentage, totalAjustes: 0, aprobados: 0, rechazados: 0 }
+      }
+      periodos[key].totalAjustes += 1
+      if (a.status === 'aprobada') periodos[key].aprobados += 1
+      if (a.status === 'rechazada') periodos[key].rechazados += 1
+    })
+  const historial = Object.values(periodos).sort((a, b) => (b.anio - a.anio) || (MES_NOMBRES.indexOf(b.mes) - MES_NOMBRES.indexOf(a.mes)))
+
   return (
     <div>
       <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 20 }}>
-        Períodos anteriores ya cerrados.
+        Períodos con ajustes ya aprobados o rechazados.
       </p>
-      {HISTORIAL_PERIODOS.map(p => (
+      {historial.length === 0 && (
+        <p style={{ color: '#9ca3af', fontSize: 13 }}>Todavía no hay períodos cerrados.</p>
+      )}
+      {historial.map(p => (
         <div key={p.mes + p.anio} style={{
           background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12,
           padding: '16px 22px', marginBottom: 10,
@@ -342,17 +326,13 @@ function TabHistorial() {
 
 // ── Pantalla de edición (Pantalla 3) ─────────────────────────────────────────
 
-function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCancelar }) {
+function PaginaEditar({ ajuste, onGuardar, onAprobar, onCancelar }) {
   const [form, setForm] = useState({
-    tipo: ajuste.tipoAjuste || 'IPC',
-    porcentaje: String(ajuste.porcentajeIPC),
-    montoAntes: ajuste.montoAntes !== null && ajuste.montoAntes !== undefined ? String(ajuste.montoAntes) : '',
-    motivo: ajuste.motivo || '',
+    tipo: ajuste.adjustmentType || 'ipc',
+    porcentaje: String(ajuste.ipcPercentage),
+    montoAntes: ajuste.amountBefore !== null && ajuste.amountBefore !== undefined ? String(ajuste.amountBefore) : '',
+    motivo: ajuste.reason || '',
   })
-
-  const cliente = useCliente(ajuste.clienteId)
-  const entidad = getEntidadDeCliente(ajuste.clienteId, entities)
-  const svc = servicios.find(s => s.id === ajuste.servicioId)
 
   const pct = parseFloat(form.porcentaje)
   const monto = parseFloat(form.montoAntes)
@@ -369,11 +349,12 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
   const chF = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
 
   const buildCambios = () => ({
-    tipoAjuste: form.tipo,
-    porcentajeIPC: pct,
-    montoAntes: montoValido ? monto : null,
-    montoDespues,
-    motivo: form.motivo,
+    id: ajuste.id,
+    updatedAt: ajuste.updatedAt,
+    adjustmentType: form.tipo,
+    ipcPercentage: pct,
+    amountBefore: montoValido ? monto : null,
+    reason: form.motivo,
   })
 
   return (
@@ -387,15 +368,15 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
         fontSize: 13, color: '#3730a3', fontWeight: 500,
       }}>
         <span style={{ fontSize: 16 }}>ℹ</span>
-        Este mes se aplica ajuste IPC. Al aprobar, se desbloquea el cálculo en Facturación del mes.
+        Al aprobar, se actualiza el precio vigente del servicio y se registra en su historial.
       </div>
 
       {/* Encabezado */}
       <h1 className="page-title" style={{ marginBottom: 4 }}>
-        Editar ajuste — {cliente?.nombre || '—'}
+        Editar ajuste — {ajuste.clientName || '—'}
       </h1>
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 22 }}>
-        {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'} · {ajuste.impactoNivel === 'alto' ? '🔴 Alto impacto' : '🟢 Bajo impacto'}
+        {ajuste.billingEntityName || '—'} · {ajuste.defaultVoucher || '—'} · {ajuste.serviceCurrency || 'ARS'} · {ajuste.impactLevel === 'alto' ? '🔴 Alto impacto' : '🟢 Bajo impacto'}
       </div>
 
       {/* Card resumen del ajuste */}
@@ -406,16 +387,16 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{cliente?.nombre || '—'}</span>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{ajuste.clientName || '—'}</span>
             <TagCliente />
-            {ajuste.impactoNivel === 'alto' && (
+            {ajuste.impactLevel === 'alto' && (
               <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2' }}>
                 ⚠ Alto impacto
               </span>
             )}
           </div>
           <div style={{ fontSize: 13, color: '#6b7280' }}>
-            {svc?.nombre || '—'} · {entidad?.name || '—'} · Factura {cliente?.tipoFactura || '—'} · {svc?.moneda || 'ARS'}
+            {ajuste.serviceName || '—'} · {ajuste.billingEntityName || '—'} · {ajuste.defaultVoucher || '—'} · {ajuste.serviceCurrency || 'ARS'}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -429,7 +410,7 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
       </div>
 
       {/* Alerta de riesgo */}
-      {ajuste.alertaAumentoSignificativo && (
+      {ajuste.significantIncrease && (
         <div style={{
           background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10,
           padding: '14px 18px', marginBottom: 20,
@@ -441,7 +422,7 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
               Riesgo detectado: Aumento significativo
             </div>
             <div style={{ fontSize: 13, color: '#b45309' }}>
-              Vs. últimos 3 ajustes del cliente. Revisá si el porcentaje es apropiado antes de aprobar.
+              El porcentaje propuesto es igual o mayor al 10%. Revisá si es apropiado antes de aprobar.
             </div>
           </div>
         </div>
@@ -460,7 +441,7 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
           <div className="form-group">
             <label htmlFor="ea-tipo">Tipo de ajuste</label>
             <select id="ea-tipo" className="form-select" name="tipo" value={form.tipo} onChange={chF} style={{ maxWidth: 200 }}>
-              {TIPOS_AJUSTE.map(t => <option key={t} value={t}>{t}</option>)}
+              {TIPOS_AJUSTE.map(t => <option key={t} value={t}>{TIPO_AJUSTE_LABEL[t]}</option>)}
             </select>
           </div>
 
@@ -534,9 +515,8 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
           </h3>
 
           {[
-            { label: 'Último aumento', value: 'Hace ' + ajuste.contexto.ultimoAumentoHaceMeses + ' meses' },
-            { label: 'Variación acumulada anual', value: '+' + ajuste.contexto.variacionAcumuladaAnual + '%' },
-            { label: 'Margen proyectado', value: '+' + ajuste.contexto.margenProyectado + '%' },
+            { label: 'Último aumento registrado', value: ajuste.lastIncreaseDate ? ajuste.lastIncreaseDate.slice(0, 10) : 'Sin registros' },
+            { label: 'Periodicidad de facturación', value: ajuste.servicePeriodicity || '—' },
           ].map(item => (
             <div key={item.label} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -595,14 +575,14 @@ function PaginaEditar({ ajuste, servicios, entities, onGuardar, onAprobar, onCan
           }}
         >CANCELAR</button>
         <button
-          onClick={() => onGuardar(ajuste.id, buildCambios())}
+          onClick={() => onGuardar(buildCambios())}
           style={{
             padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700,
             color: '#4f46e5', background: '#eef2ff', border: '1.5px solid #a5b4fc', cursor: 'pointer',
           }}
         >GUARDAR CAMBIOS</button>
         <button
-          onClick={() => puedeAprobar && onAprobar(ajuste.id, buildCambios())}
+          onClick={() => puedeAprobar && onAprobar(buildCambios())}
           disabled={!puedeAprobar}
           style={{
             padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700,
@@ -638,82 +618,62 @@ const TABS = [
 
 export default function AjustesPendientes() {
   useEffect(() => { document.title = 'Ajustes IPC — IPM Kyra' }, [])
-  const { entities } = useEntities()
+  const { adjustments, loading, error, generateAdjustments, saveAdjustment, approveAdjustment, rejectAdjustment } = useIpcAdjustments()
 
-  const [ajustes, setAjustes] = useState(AJUSTES_INICIAL)
-  const [servicios, setServicios] = useState(SERVICIOS_INICIAL)
   const [tabActivo, setTabActivo] = useState('revision')
   const [ajusteEnEdicion, setAjusteEnEdicion] = useState(null)
+  const [generarModal, setGenerarModal] = useState(false)
+  const [generando, setGenerando] = useState(false)
+  const now = new Date()
+  const [genForm, setGenForm] = useState({ periodMonth: now.getMonth() + 1, periodYear: now.getFullYear(), ipcPercentage: '' })
+  const [genErrors, setGenErrors] = useState({})
 
   // Conteos para stat cards
-  const countRevision    = ajustes.filter(a => a.status === 'revision').length
-  const countListaApro   = ajustes.filter(a => a.status === 'lista_aprobar').length
-  const countAprobada    = ajustes.filter(a => a.status === 'aprobada' || a.status === 'rechazada').length
+  const countRevision    = adjustments.filter(a => a.status === 'revision').length
+  const countListaApro   = adjustments.filter(a => a.status === 'lista_aprobar').length
+  const countAprobada    = adjustments.filter(a => a.status === 'aprobada' || a.status === 'rechazada').length
 
   // ── Lógica de negocio ─────────────────────────────────────────────────────
 
-  function aprobarAjuste(ajusteId, cambios) {
-    const hoy = new Date().toISOString().slice(0, 10)
-    const ajuste = ajustes.find(a => a.id === ajusteId)
-    if (!ajuste) return
-
-    const montoNuevo = cambios.montoDespues
-    const motivo = cambios.motivo || ('Ajuste IPC ' + ajuste.mes + ' ' + ajuste.anio)
-
-    // Actualizar ajuste
-    setAjustes(prev => prev.map(a =>
-      a.id !== ajusteId ? a : {
-        ...a,
-        ...cambios,
-        status: 'aprobada',
-        fechaAprobacion: hoy,
-      }
-    ))
-
-    // Actualizar servicio en Módulo 3
-    if (montoNuevo !== null) {
-      setServicios(prev => prev.map(s => {
-        if (s.id !== ajuste.servicioId) return s
-        const valorAnterior = s.tipo === 'fijo' ? s.montoBase : s.tarifaHora
-        const historial = [
-          { fecha: hoy, valorAnterior, valorNuevo: montoNuevo, motivo },
-          ...(s.historialPrecios || []),
-        ]
-        return {
-          ...s,
-          montoBase:   s.tipo === 'fijo'     ? montoNuevo : s.montoBase,
-          tarifaHora:  s.tipo === 'por_hora' ? montoNuevo : s.tarifaHora,
-          historialPrecios: historial,
-        }
-      }))
-    }
-
+  async function aprobarAjuste(ajuste) {
+    await approveAdjustment(ajuste).catch(() => {})
     setAjusteEnEdicion(null)
     setTabActivo('aprobada')
   }
 
-  function rechazarAjuste(ajusteId) {
-    const hoy = new Date().toISOString().slice(0, 10)
-    setAjustes(prev => prev.map(a =>
-      a.id !== ajusteId ? a : { ...a, status: 'rechazada', fechaAprobacion: hoy }
-    ))
+  async function rechazarAjuste(ajuste) {
+    await rejectAdjustment(ajuste).catch(() => {})
   }
 
-  function guardarCambios(ajusteId, cambios) {
-    setAjustes(prev => prev.map(a =>
-      a.id !== ajusteId ? a : {
-        ...a,
-        ...cambios,
-        status: 'lista_aprobar',
-        alertaAumentoSignificativo: false, // ya fue revisado
-      }
-    ))
+  async function guardarCambios(cambios) {
+    await saveAdjustment(cambios).catch(() => {})
     setAjusteEnEdicion(null)
     setTabActivo('lista_aprobar')
   }
 
+  const chGen = e => setGenForm(p => ({ ...p, [e.target.name]: e.target.value }))
+
+  async function submitGenerar() {
+    const validationErrors = validateGenerateDraft(genForm)
+    setGenErrors(validationErrors)
+    if (Object.keys(validationErrors).length > 0) return
+    setGenerando(true)
+    try {
+      await generateAdjustments({
+        periodMonth: Number(genForm.periodMonth),
+        periodYear: Number(genForm.periodYear),
+        ipcPercentage: Number(genForm.ipcPercentage),
+      })
+      setGenerarModal(false)
+      setGenForm({ periodMonth: now.getMonth() + 1, periodYear: now.getFullYear(), ipcPercentage: '' })
+      setTabActivo('revision')
+    } finally {
+      setGenerando(false)
+    }
+  }
+
   // Ajustes del tab activo
-  const ajustesFiltrados = ajustes.filter(a => {
+  const ajustesFiltrados = adjustments.filter(a => {
     if (tabActivo === 'revision')      return a.status === 'revision'
     if (tabActivo === 'lista_aprobar') return a.status === 'lista_aprobar'
     if (tabActivo === 'aprobada')      return a.status === 'aprobada' || a.status === 'rechazada'
@@ -726,8 +686,6 @@ export default function AjustesPendientes() {
     return (
       <PaginaEditar
         ajuste={ajusteEnEdicion}
-        servicios={servicios}
-        entities={entities}
         onGuardar={guardarCambios}
         onAprobar={aprobarAjuste}
         onCancelar={() => setAjusteEnEdicion(null)}
@@ -739,12 +697,18 @@ export default function AjustesPendientes() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ textTransform: 'capitalize' }}>
-        Ajustes pendientes de {MES_ACTUAL} {ANIO_ACTUAL}
-      </h1>
-      <p style={{ color: '#6b7280', fontSize: 14, marginTop: -6, marginBottom: 28 }}>
-        Revisá y gestioná los ajustes para subir precios a clientes y honorarios al equipo.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <h1 className="page-title">Actualización por IPC</h1>
+          <p style={{ color: '#6b7280', fontSize: 14, marginTop: -6, marginBottom: 28 }}>
+            Revisá y gestioná los ajustes para subir precios a clientes y honorarios al equipo.
+          </p>
+        </div>
+        <button type="button" className="btn-cta" onClick={() => setGenerarModal(true)}>+ Generar ajustes IPC</button>
+      </div>
+
+      {error && <div className="admin-data-error" role="alert">{error}</div>}
+      {loading && adjustments.length === 0 && <p style={{ color: '#9ca3af', fontSize: 13 }}>Cargando ajustes…</p>}
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 32 }}>
@@ -802,43 +766,63 @@ export default function AjustesPendientes() {
 
       {/* Contenido del tab */}
       {tabActivo === 'historial' ? (
-        <TabHistorial />
+        <TabHistorial adjustments={adjustments} />
       ) : ajustesFiltrados.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '56px 24px', color: '#9ca3af', fontSize: 14 }}>
-          {tabActivo === 'revision'      ? 'No hay ajustes pendientes de revisión para este período.' :
+          {tabActivo === 'revision'      ? 'No hay ajustes pendientes de revisión. Generá un lote nuevo con el botón de arriba.' :
            tabActivo === 'lista_aprobar' ? 'No hay ajustes listos para aprobar todavía.' :
-                                          'No hay ajustes aprobados en este período.'}
+                                          'No hay ajustes aprobados todavía.'}
         </div>
       ) : (
         <div>
           {tabActivo === 'revision' && ajustesFiltrados.map(a => (
-            <CardRevision
-              key={a.id}
-              ajuste={a}
-              servicios={servicios}
-              entities={entities}
-              onEditar={setAjusteEnEdicion}
-            />
+            <CardRevision key={a.id} ajuste={a} onEditar={setAjusteEnEdicion} />
           ))}
           {(tabActivo === 'lista_aprobar' || tabActivo === 'aprobada') && ajustesFiltrados.map(a => (
             <CardAprobacion
               key={a.id}
               ajuste={a}
-              servicios={servicios}
-              entities={entities}
-              onAprobar={id => aprobarAjuste(id, {
-                tipoAjuste: a.tipoAjuste,
-                porcentajeIPC: a.porcentajeIPC,
-                montoAntes: a.montoAntes,
-                montoDespues: a.montoDespues ?? calcularMontoDespues(a.montoAntes, a.porcentajeIPC),
-                motivo: a.motivo,
-              })}
+              onAprobar={aprobarAjuste}
               onRechazar={rechazarAjuste}
               esHistorial={tabActivo === 'aprobada'}
             />
           ))}
         </div>
       )}
+
+      <Modal
+        isOpen={generarModal}
+        onClose={() => setGenerarModal(false)}
+        title="GENERAR AJUSTES IPC"
+        footer={(
+          <div className="modal-footer-inner">
+            <div className="modal-validation">{Object.values(genErrors)[0]}</div>
+            <button className="btn-guardar ready" onClick={submitGenerar} disabled={generando}>
+              {generando ? 'Generando…' : 'Generar'}
+            </button>
+          </div>
+        )}
+      >
+        <p style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: -8, marginBottom: 16 }}>
+          Se genera un ajuste "Necesita revisión" por cada servicio activo de clientes con actualización por IPC habilitada.
+        </p>
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="gen-mes">Mes</label>
+            <select id="gen-mes" className="form-select" name="periodMonth" value={genForm.periodMonth} onChange={chGen}>
+              {MES_NOMBRES.map((nombre, i) => <option key={nombre} value={i + 1}>{nombre}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="gen-anio">Año</label>
+            <input id="gen-anio" className="form-input" type="number" name="periodYear" value={genForm.periodYear} onChange={chGen} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label htmlFor="gen-pct">Porcentaje IPC acumulado <span className="label-req">*</span></label>
+          <input id="gen-pct" className="form-input" type="number" min="0" max="100" step="0.1" name="ipcPercentage" value={genForm.ipcPercentage} onChange={chGen} placeholder="ej: 14.2" />
+        </div>
+      </Modal>
     </div>
   )
 }

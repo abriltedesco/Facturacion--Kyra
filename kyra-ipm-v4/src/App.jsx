@@ -20,6 +20,7 @@ import { EntitiesProvider } from './context/EntitiesContext'
 import { ClientsProvider } from './context/ClientsContext'
 import { ServicesProvider } from './context/ServicesContext'
 import { ProveedoresProvider } from './context/ProveedoresContext'
+import { IpcAdjustmentsProvider } from './context/IpcAdjustmentsContext'
 
 function AppLoading() {
   return (
@@ -49,6 +50,7 @@ function AppShell() {
       <ClientsProvider>
         <ServicesProvider>
           <ProveedoresProvider>
+            <IpcAdjustmentsProvider>
             <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
             <div className="app-layout">
               <Sidebar />
@@ -75,6 +77,7 @@ function AppShell() {
                 <Footer />
               </div>
             </div>
+            </IpcAdjustmentsProvider>
           </ProveedoresProvider>
         </ServicesProvider>
       </ClientsProvider>

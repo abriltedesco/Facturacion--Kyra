@@ -36,12 +36,12 @@ Marcar con `[x]` al completar. Actualizar tras cada sesión.
 - [x] Tests (pgTAP en `supabase/tests/services_module.test.sql` sin ejecutar por falta de Docker; unitarios `serviceRepository.test.js` y `serviceRules.test.js` — todos pasan)
 
 ## Módulo 4 — Actualización por IPC
-- [ ] Tabla `ipc_adjustments` (cliente, servicio, período desde/hasta, % aplicado, monto anterior, monto nuevo, fecha, estado)
-- [ ] RPC para calcular preview de ajuste (dado % IPC y período)
-- [ ] RPC para aplicar/confirmar ajuste (actualiza `services`/precio vigente)
-- [ ] Persistencia de historial de actualizaciones
-- [ ] Conectar `AjustesPendientes.jsx` (`guardarCambios()`) al backend real
-- [ ] Tests
+- [x] Tabla `ipc_adjustments` (cliente/servicio via `client_service_id`, período mes/año, % aplicado, monto anterior/nuevo, estado, fecha de aprobación)
+- [x] RPC para calcular preview de ajuste (`generate_ipc_adjustments`: genera en lote para todos los servicios activos de clientes con `ipc_adjustable=true` en un período dado)
+- [x] RPC para aplicar/confirmar ajuste (`approve_ipc_adjustment`: actualiza `client_services.base_amount/hourly_rate` y registra el cambio)
+- [x] Persistencia de historial de actualizaciones (reutiliza `client_service_price_history` del Módulo 3 al aprobar)
+- [x] Conectar `AjustesPendientes.jsx` (`guardarCambios()`/aprobar/rechazar) al backend real vía `IpcAdjustmentsContext`
+- [x] Tests (pgTAP en `supabase/tests/ipc_adjustments_module.test.sql` sin ejecutar por falta de Docker; unitarios `ipcRules.test.js` y `ipcAdjustmentRepository.test.js` — todos pasan)
 
 ## Módulo 5 — Facturación mensual
 - [ ] Tabla `billing_lines` (cliente, servicio, período, tipo factura, entidad, moneda, horas, importes, alertas, status)
