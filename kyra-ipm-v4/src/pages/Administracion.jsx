@@ -5,9 +5,12 @@ import EntityFormModal from '../components/Entidades/EntityFormModal'
 import EntityStatusDialog from '../components/Entidades/EntityStatusDialog'
 import { useEntities } from '../context/EntitiesContext'
 import { useClients } from '../context/ClientsContext'
+import { useServices } from '../context/ServicesContext'
 import ClienteFormModal from '../components/Clientes/ClienteFormModal'
 import ClienteStatusDialog from '../components/Clientes/ClienteStatusDialog'
 import CatalogsModal from '../components/Clientes/CatalogsModal'
+import ProveedorStatusDialog from '../components/Proveedores/ProveedorStatusDialog'
+import ServiceCatalogStatusDialog from '../components/Servicios/ServiceCatalogStatusDialog'
 import { getArcaStatus } from '../domain/arca'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
@@ -18,11 +21,12 @@ const PAGE_SIZE = 10
 // ── Helpers para Clientes ──────────────────────────────────────────────────────
 
 const CLIENT_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo', archived: 'Archivado' }
+const PROVEEDOR_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo' }
 
 const PROVEEDORES_DATA = Array.from({ length: 10 }, (_, i) => ({
   id: i + 1,
   nombre: ['AWS Services', 'Google Workspace', 'Adobe Inc', 'Slack Corp', 'Figma Inc', 'Notion', 'Vercel', 'GitHub', 'Linear', 'Loom'][i],
-  estado: 'PENDIENTE',
+  status: 'active',
   mail: ['aws', 'google.ws', 'adobe', 'slack', 'figma', 'notion', 'vercel', 'github', 'linear', 'loom'][i] + '@empresa.com',
   tipoServicio: ['Cloud', 'SaaS', 'Diseño', 'Comunicación', 'Diseño', 'Productividad', 'Dev', 'Dev', 'Gestión', 'Video'][i],
   medioPago: 'Transferencia',
@@ -64,66 +68,7 @@ function EntityArcaBadge({ entity }) {
   return <span className={`entity-arca-badge entity-arca-${status}`}>{ENTITY_ARCA_LABEL[status]}</span>
 }
 
-const SERVICIOS_DATA = [
-  { id: 1,  nombre: 'Social Media',     tipo: 'Fijo',     precioBase: '$85,000',  moneda: 'ARS', clientesActivos: 6, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 85000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 74000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 64000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-02-01', precio: 56000, motivo: 'Ajuste IPC' },
-      { fecha: '2024-08-01', precio: 48000, motivo: 'Ajuste IPC' },
-      { fecha: '2024-02-01', precio: 40000, motivo: 'Precio inicial' },
-    ] },
-  { id: 2,  nombre: 'Diseño UX/UI',     tipo: 'Fijo',     precioBase: '$120,000', moneda: 'ARS', clientesActivos: 3, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 120000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 104000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 90000,  motivo: 'Ajuste IPC' },
-      { fecha: '2025-02-01', precio: 78000,  motivo: 'Ajuste IPC' },
-      { fecha: '2024-08-01', precio: 67000,  motivo: 'Ajuste IPC' },
-      { fecha: '2024-02-01', precio: 58000,  motivo: 'Precio inicial' },
-    ] },
-  { id: 3,  nombre: 'Dev a medida',     tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo',   historialPrecios: [] },
-  { id: 4,  nombre: 'Reporting',        tipo: 'Fijo',     precioBase: '$4,500',   moneda: 'USD', clientesActivos: 1, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-06-01', precio: 4500, motivo: 'Ajuste tarifario' },
-      { fecha: '2025-01-01', precio: 4000, motivo: 'Precio inicial' },
-    ] },
-  { id: 5,  nombre: 'Consultoría',      tipo: 'Por hora',  precioBase: '—',        moneda: 'ARS', clientesActivos: 2, estado: 'Activo',   historialPrecios: [] },
-  { id: 6,  nombre: 'SEO',             tipo: 'Fijo',     precioBase: '$60,000',  moneda: 'ARS', clientesActivos: 4, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 60000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 52000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 45000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-02-01', precio: 39000, motivo: 'Ajuste IPC' },
-      { fecha: '2024-08-01', precio: 33000, motivo: 'Ajuste IPC' },
-      { fecha: '2024-02-01', precio: 28000, motivo: 'Precio inicial' },
-    ] },
-  { id: 7,  nombre: 'Branding',        tipo: 'Fijo',     precioBase: '$250,000', moneda: 'ARS', clientesActivos: 1, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 250000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 217000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 188000, motivo: 'Ajuste IPC' },
-    ] },
-  { id: 8,  nombre: 'Email Marketing', tipo: 'Fijo',     precioBase: '$65,000',  moneda: 'ARS', clientesActivos: 3, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 65000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 56000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 49000, motivo: 'Precio inicial' },
-    ] },
-  { id: 9,  nombre: 'SEM',             tipo: 'Fijo',     precioBase: '$75,000',  moneda: 'ARS', clientesActivos: 2, estado: 'Inactivo',
-    historialPrecios: [
-      { fecha: '2026-04-01', precio: 75000, motivo: 'Último ajuste' },
-      { fecha: '2025-10-01', precio: 65000, motivo: 'Ajuste IPC' },
-    ] },
-  { id: 10, nombre: 'Contenido',       tipo: 'Fijo',     precioBase: '$70,000',  moneda: 'ARS', clientesActivos: 5, estado: 'Activo',
-    historialPrecios: [
-      { fecha: '2026-08-01', precio: 70000, motivo: 'Ajuste IPC' },
-      { fecha: '2026-02-01', precio: 61000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-08-01', precio: 53000, motivo: 'Ajuste IPC' },
-      { fecha: '2025-02-01', precio: 46000, motivo: 'Precio inicial' },
-    ] },
-]
+const SERVICE_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo', archived: 'Archivado' }
 
 // ── Forms ────────────────────────────────────────────────────────────────────
 
@@ -210,9 +155,17 @@ export default function Administracion() {
     saveFiscalCondition,
     saveTaxCategory,
   } = useClients()
+  const {
+    catalog: servicios,
+    loading: servicesLoading,
+    error: servicesError,
+    saveCatalog,
+    setCatalogStatus,
+    listCatalogPriceHistory,
+  } = useServices()
   const [tab, setTab] = useState(0)
   const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
-  const [servicios, setServicios] = useState(SERVICIOS_DATA)
+  const [catalogHistory, setCatalogHistory] = useState({})
   const [editingServicio, setEditingServicio] = useState(null)
   const [editingManagedEntity, setEditingManagedEntity] = useState(null)
   const [entityStatusAction, setEntityStatusAction] = useState(null)
@@ -220,6 +173,9 @@ export default function Administracion() {
   const [editingCliente, setEditingCliente] = useState(null) // null = crear, objeto = editar
   const [clientStatusAction, setClientStatusAction] = useState(null)
   const [changingClientStatus, setChangingClientStatus] = useState(false)
+  const [proveedorStatusAction, setProveedorStatusAction] = useState(null)
+  const [serviceStatusAction, setServiceStatusAction] = useState(null)
+  const [changingServiceStatus, setChangingServiceStatus] = useState(false)
 
   const [openModal, setOpenModal] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -262,11 +218,19 @@ export default function Administracion() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  function handleDeleteRow(id) {
-    const setters = [null, setProveedores, null, setServicios]
-    const setter = setters[tab]
-    if (setter) setter(prev => prev.filter(r => r.id !== id))
+  function openProveedorStatusAction(proveedor, action) {
+    setProveedorStatusAction({ proveedor, action })
     setRowMenuOpen(null)
+  }
+
+  function confirmProveedorStatusAction() {
+    const { proveedor, action } = proveedorStatusAction
+    if (action === 'delete') {
+      setProveedores(prev => prev.filter(r => r.id !== proveedor.id))
+    } else {
+      setProveedores(prev => prev.map(r => r.id === proveedor.id ? { ...r, status: action === 'activate' ? 'active' : 'inactive' } : r))
+    }
+    setProveedorStatusAction(null)
   }
 
   function openClienteForm(client = null) {
@@ -302,7 +266,7 @@ export default function Administracion() {
   }
 
   const currentData = [managedClients, proveedores, managedEntities, servicios][tab]
-  const STATUS_LABEL_BY_TAB = { 0: CLIENT_STATUS_LABEL, 2: ENTITY_STATUS_LABEL }
+  const STATUS_LABEL_BY_TAB = { 0: CLIENT_STATUS_LABEL, 1: PROVEEDOR_STATUS_LABEL, 2: ENTITY_STATUS_LABEL, 3: SERVICE_STATUS_LABEL }
 
   const filtered = currentData.filter(r => {
     const q = search.toLowerCase()
@@ -341,41 +305,58 @@ export default function Administracion() {
   const guardarP = () => {
     setSubmitted(true)
     if (!isReadyP) return
-    setProveedores(p => [{ id: Date.now(), nombre: formP.nombre, estado: 'PENDIENTE', mail: formP.email, tipoServicio: formP.tipoServicio, medioPago: formP.metodoPago, destino: formP.destino, cuit: formP.cuit }, ...p])
+    setProveedores(p => [{ id: Date.now(), nombre: formP.nombre, status: 'active', mail: formP.email, tipoServicio: formP.tipoServicio, medioPago: formP.metodoPago, destino: formP.destino, cuit: formP.cuit }, ...p])
     setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setOpenModal(null); setTab(1)
   }
-  function handleToggleServicio(id) {
-    setServicios(prev => prev.map(s =>
-      s.id === id ? { ...s, estado: s.estado === 'Activo' ? 'Inactivo' : 'Activo' } : s
-    ))
-    setRowMenuOpen(null)
+
+  async function changeServiceCatalogStatus(service, nextStatus) {
+    setChangingServiceStatus(true)
+    try {
+      await setCatalogStatus(service, nextStatus)
+      setServiceStatusAction(null)
+      setRowMenuOpen(null)
+    } finally {
+      setChangingServiceStatus(false)
+    }
   }
 
   function openEditServicio(servicio) {
     setEditingServicio(servicio)
     setFormS({
-      nombre: servicio.nombre || '',
-      tipoSvc: servicio.tipo || 'Fijo',
-      precioBase: servicio.precioBase !== '—' ? servicio.precioBase : '',
-      moneda: servicio.moneda || 'ARS',
-      estadoInicial: servicio.estado === 'Activo',
+      nombre: servicio.name || '',
+      tipoSvc: servicio.type === 'hourly' ? 'Por hora' : 'Fijo',
+      precioBase: servicio.basePrice ?? '',
+      moneda: servicio.currency || 'ARS',
+      estadoInicial: servicio.status === 'active',
     })
     setSubmitted(false)
     setOpenModal('servicio')
   }
 
-  const guardarS = () => {
+  const guardarS = async () => {
     setSubmitted(true)
     if (!isReadyS) return
-    if (editingServicio) {
-      setServicios(prev => prev.map(s => s.id === editingServicio.id
-        ? { ...s, nombre: formS.nombre, tipo: formS.tipoSvc, precioBase: formS.tipoSvc === 'Fijo' ? formS.precioBase : '—', moneda: formS.moneda, estado: formS.estadoInicial ? 'Activo' : 'Inactivo' }
-        : s
-      ))
-    } else {
-      setServicios(p => [{ id: Date.now(), nombre: formS.nombre, estado: formS.estadoInicial ? 'Activo' : 'Inactivo', tipo: formS.tipoSvc, precioBase: formS.tipoSvc === 'Fijo' ? formS.precioBase : '—', moneda: formS.moneda, clientesActivos: 0 }, ...p])
-    }
+    await saveCatalog({
+      id: editingServicio?.id || null,
+      updatedAt: editingServicio?.updatedAt || null,
+      name: formS.nombre,
+      type: formS.tipoSvc === 'Por hora' ? 'hourly' : 'fixed',
+      currency: formS.moneda,
+      basePrice: formS.tipoSvc === 'Fijo' ? Number(formS.precioBase) : null,
+      status: formS.estadoInicial ? 'active' : 'inactive',
+    })
     setFormS(EMPTY_SERVICIO); setEditingServicio(null); setSubmitted(false); setOpenModal(null); setTab(3)
+  }
+
+  async function toggleExpandServicio(id) {
+    setExpandedServicio(prev => {
+      const next = prev === id ? null : id
+      return next
+    })
+    if (!catalogHistory[id]) {
+      const history = await listCatalogPriceHistory(id).catch(() => [])
+      setCatalogHistory(current => ({ ...current, [id]: history }))
+    }
   }
 
   const footerFor = (isReady, onSave) => (
@@ -499,7 +480,7 @@ export default function Administracion() {
             : pageRows.map(r => (
               <tr key={r.id}>
                 <td>{r.nombre}</td>
-                <td><Badge estado={r.estado} /></td>
+                <td><Badge estado={PROVEEDOR_STATUS_LABEL[r.status] || r.status} /></td>
                 <td className="td-muted">{r.mail}</td>
                 <td className="td-muted">{r.tipoServicio}</td>
                 <td className="td-muted">{r.medioPago}</td>
@@ -510,7 +491,13 @@ export default function Administracion() {
                     onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
                   {rowMenuOpen === r.id && (
                     <div className="row-menu" ref={rowMenuRef} role="menu">
-                      <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
+                      <button className="row-menu-item" role="menuitem" onClick={() => openProveedorStatusAction(r, r.status === 'active' ? 'deactivate' : 'activate')}>
+                        {r.status === 'active'
+                          ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
+                          : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
+                        }
+                      </button>
+                      <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => openProveedorStatusAction(r, 'delete')}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                         </svg>
@@ -615,7 +602,7 @@ export default function Administracion() {
               ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
               : pageRows.map(r => {
                 const isExpanded = expandedServicio === r.id
-                const historial  = r.historialPrecios ?? []
+                const historial  = (catalogHistory[r.id] || []).map(h => ({ fecha: h.effectiveDate, precio: h.newPrice, motivo: h.reason }))
                 const aniosDisp  = [...new Set(historial.map(h => h.fecha.slice(0,4)))].sort((a,b) => b-a)
                 const anioFiltro = historialAnio
                 const histFiltrado = historial.filter(h => h.fecha.startsWith(anioFiltro))
@@ -635,49 +622,54 @@ export default function Administracion() {
 
                 return (
                   <>
-                    <tr key={r.id} style={{ cursor: historial.length ? 'pointer' : 'default' }}
-                      onClick={() => {
-                        if (!historial.length) return
-                        setExpandedServicio(prev => prev === r.id ? null : r.id)
-                      }}
+                    <tr key={r.id} style={{ cursor: 'pointer' }}
+                      onClick={() => toggleExpandServicio(r.id)}
                     >
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {historial.length > 0 && (
-                            <span style={{ fontSize: 10, opacity: .4, transition: 'transform .15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                          )}
-                          <strong>{r.nombre}</strong>
+                          <span style={{ fontSize: 10, opacity: .4, transition: 'transform .15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          <strong>{r.name}</strong>
                         </div>
                       </td>
-                      <td className="td-muted">{r.tipo}</td>
-                      <td>{r.precioBase}</td>
-                      <td><span className="moneda-badge">{r.moneda}</span></td>
-                      <td className="td-muted">{r.clientesActivos}</td>
-                      <td><Badge estado={r.estado} /></td>
+                      <td className="td-muted">{r.type === 'hourly' ? 'Por hora' : 'Fijo'}</td>
+                      <td>{r.basePrice === null ? '—' : r.basePrice.toLocaleString('es-AR')}</td>
+                      <td><span className="moneda-badge">{r.currency}</span></td>
+                      <td className="td-muted">{r.activeClientsCount ?? 0}</td>
+                      <td><Badge estado={SERVICE_STATUS_LABEL[r.status] || r.status} /></td>
                       <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
-                        <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
+                        <button className="dots-btn" aria-label={'Opciones '+r.name} aria-expanded={rowMenuOpen===r.id}
                           onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
                         {rowMenuOpen === r.id && (
                           <div className="row-menu" ref={rowMenuRef} role="menu">
-                            <button className="row-menu-item" role="menuitem" onClick={() => { openEditServicio(r); setRowMenuOpen(null) }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                              </svg>
-                              Editar
-                            </button>
-                            <button className="row-menu-item" role="menuitem" onClick={() => handleToggleServicio(r.id)}>
-                              {r.estado === 'Activo'
-                                ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
-                                : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
-                              }
-                            </button>
-                            <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => handleDeleteRow(r.id)}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                              </svg>
-                              Eliminar
-                            </button>
+                            {r.status !== 'archived' && (
+                              <button className="row-menu-item" role="menuitem" onClick={() => { openEditServicio(r); setRowMenuOpen(null) }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                                Editar
+                              </button>
+                            )}
+                            {r.status === 'archived' ? (
+                              <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'restore' }); setRowMenuOpen(null) }}>
+                                Restaurar
+                              </button>
+                            ) : (
+                              <>
+                                <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: r.status === 'active' ? 'deactivate' : 'activate' }); setRowMenuOpen(null) }}>
+                                  {r.status === 'active'
+                                    ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
+                                    : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
+                                  }
+                                </button>
+                                <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'archive' }); setRowMenuOpen(null) }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                                  </svg>
+                                  Eliminar
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </td>
@@ -745,7 +737,7 @@ export default function Administracion() {
       {/* Single toolbar row: filter + search + export + import + NUEVO dropdown */}
       <div className="admin-toolbar">
         <FilterBox id="admin-estado" label="Estado"
-          options={tab === 0 ? ['Activo', 'Inactivo', 'Archivado'] : tab === 1 ? ['PENDIENTE'] : tab === 2 ? ['Activa', 'Inactiva', 'Archivada'] : ['Activo', 'Inactivo']}
+          options={tab === 0 ? ['Activo', 'Inactivo', 'Archivado'] : tab === 1 ? ['Activo', 'Inactivo'] : tab === 2 ? ['Activa', 'Inactiva', 'Archivada'] : ['Activo', 'Inactivo', 'Archivado']}
           value={filtroEstado} onChange={v => { setFiltroEstado(v); setPage(1) }} />
 
         <div className="search-wrap">
@@ -819,6 +811,7 @@ export default function Administracion() {
       <div id="atab-panel" role="tabpanel" aria-labelledby={'atab-' + tab} className="table-container">
         {tab === 0 && clientsError && <div className="admin-data-error" role="alert">{clientsError}</div>}
         {tab === 2 && entitiesError && <div className="admin-data-error" role="alert">{entitiesError}</div>}
+        {tab === 3 && servicesError && <div className="admin-data-error" role="alert">{servicesError}</div>}
         {renderTable()}
         <Pagination page={page} totalPages={totalPages} onChange={p => setPage(p)} />
       </div>
@@ -894,6 +887,21 @@ export default function Administracion() {
         busy={changingClientStatus}
         onCancel={() => setClientStatusAction(null)}
         onConfirm={nextStatus => changeClientStatus(clientStatusAction.client, nextStatus).catch(() => {})}
+      />
+
+      <ProveedorStatusDialog
+        proveedor={proveedorStatusAction?.proveedor || null}
+        action={proveedorStatusAction?.action || null}
+        onCancel={() => setProveedorStatusAction(null)}
+        onConfirm={confirmProveedorStatusAction}
+      />
+
+      <ServiceCatalogStatusDialog
+        service={serviceStatusAction?.service || null}
+        action={serviceStatusAction?.action || null}
+        busy={changingServiceStatus}
+        onCancel={() => setServiceStatusAction(null)}
+        onConfirm={nextStatus => changeServiceCatalogStatus(serviceStatusAction.service, nextStatus).catch(() => {})}
       />
 
       <CatalogsModal

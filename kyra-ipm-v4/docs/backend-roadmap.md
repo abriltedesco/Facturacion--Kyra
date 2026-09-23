@@ -27,13 +27,13 @@ Marcar con `[x]` al completar. Actualizar tras cada sesión.
 - [x] Periodicidad de actualización por IPC
 
 ## Módulo 3 — Servicios por cliente
-- [ ] Tabla `services` (nombre, descripción, tipo fijo/por_hora, moneda, periodicidad, estado)
-- [ ] Tarifa hora / monto base por servicio
-- [ ] RPC `save_service` / `set_service_status`
-- [ ] Tabla/histórico `service_price_history` (cambios de precio)
-- [ ] Repositorio `serviceRepository.js` + reemplazo de `data/servicios.js`
-- [ ] Conectar `ClientsContext` o nuevo `ServicesContext` al backend
-- [ ] Tests (pgTAP + unitarios) del módulo
+- [x] Tabla `service_catalog` (nombre, descripción, tipo fijo/por_hora, moneda, periodicidad, estado)
+- [x] Tarifa hora / monto base por servicio (`client_services.base_amount` / `hourly_rate`)
+- [x] RPC `save_service` / `set_service_status` (`save_service_catalog`, `set_service_catalog_status`, `save_client_service`, `set_client_service_status`)
+- [x] Tabla/histórico `service_price_history` (cambios de precio) — `service_catalog_price_history` + `client_service_price_history`
+- [x] Repositorio `serviceRepository.js` + reemplazo de `data/servicios.js`
+- [x] Conectar `ServicesContext` al backend (Administracion.jsx catálogo + ClienteDetalle.jsx servicios por cliente)
+- [x] Tests (pgTAP en `supabase/tests/services_module.test.sql` sin ejecutar por falta de Docker; unitarios `serviceRepository.test.js` y `serviceRules.test.js` — todos pasan)
 
 ## Módulo 4 — Actualización por IPC
 - [ ] Tabla `ipc_adjustments` (cliente, servicio, período desde/hasta, % aplicado, monto anterior, monto nuevo, fecha, estado)

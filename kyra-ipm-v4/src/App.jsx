@@ -16,6 +16,7 @@ import { FacturacionProvider } from './context/FacturacionContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { EntitiesProvider } from './context/EntitiesContext'
 import { ClientsProvider } from './context/ClientsContext'
+import { ServicesProvider } from './context/ServicesContext'
 
 function AppLoading() {
   return (
@@ -43,30 +44,32 @@ function AppShell() {
   return (
     <EntitiesProvider>
       <ClientsProvider>
-        <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
-        <div className="app-layout">
-          <Sidebar />
-          <div className="app-body">
-            <main id="main-content" className="main-content" tabIndex="-1">
-              <FacturacionProvider>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard"                    element={<Dashboard />} />
-                  <Route path="/administracion"               element={<Administracion />} />
-                  <Route path="/administracion/entidad/:id"   element={<EntidadDetalle />} />
-                  <Route path="/administracion/cliente/:id"   element={<ClienteDetalle />} />
-                  <Route path="/ingresos"                     element={<Ingresos />} />
-                  <Route path="/egresos"                      element={<Egresos />} />
-                  <Route path="/emails"                       element={<Emails />} />
-                  <Route path="/facturacion"                  element={<FacturacionMes />} />
-                  <Route path="/emision"                      element={<EmisionPage />} />
-                  <Route path="/ajustes"                      element={<AjustesPendientes />} />
-                </Routes>
-              </FacturacionProvider>
-            </main>
-            <Footer />
+        <ServicesProvider>
+          <a href="#main-content" className="skip-link">Saltar al contenido principal</a>
+          <div className="app-layout">
+            <Sidebar />
+            <div className="app-body">
+              <main id="main-content" className="main-content" tabIndex="-1">
+                <FacturacionProvider>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard"                    element={<Dashboard />} />
+                    <Route path="/administracion"               element={<Administracion />} />
+                    <Route path="/administracion/entidad/:id"   element={<EntidadDetalle />} />
+                    <Route path="/administracion/cliente/:id"   element={<ClienteDetalle />} />
+                    <Route path="/ingresos"                     element={<Ingresos />} />
+                    <Route path="/egresos"                      element={<Egresos />} />
+                    <Route path="/emails"                       element={<Emails />} />
+                    <Route path="/facturacion"                  element={<FacturacionMes />} />
+                    <Route path="/emision"                      element={<EmisionPage />} />
+                    <Route path="/ajustes"                      element={<AjustesPendientes />} />
+                  </Routes>
+                </FacturacionProvider>
+              </main>
+              <Footer />
+            </div>
           </div>
-        </div>
+        </ServicesProvider>
       </ClientsProvider>
     </EntitiesProvider>
   )
