@@ -1,38 +1,29 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Modal from '../components/Modal'
 import EntityFormModal from '../components/Entidades/EntityFormModal'
 import EntityStatusDialog from '../components/Entidades/EntityStatusDialog'
 import { useEntities } from '../context/EntitiesContext'
 import { useClients } from '../context/ClientsContext'
 import { useServices } from '../context/ServicesContext'
+import { useProveedores } from '../context/ProveedoresContext'
 import ClienteFormModal from '../components/Clientes/ClienteFormModal'
 import ClienteStatusDialog from '../components/Clientes/ClienteStatusDialog'
 import CatalogsModal from '../components/Clientes/CatalogsModal'
+import ProveedorFormModal from '../components/Proveedores/ProveedorFormModal'
 import ProveedorStatusDialog from '../components/Proveedores/ProveedorStatusDialog'
+import ServiceCatalogFormModal from '../components/Servicios/ServiceCatalogFormModal'
 import ServiceCatalogStatusDialog from '../components/Servicios/ServiceCatalogStatusDialog'
 import { getArcaStatus } from '../domain/arca'
 
 const TABS = ['Clientes', 'Proveedores', 'Entidades', 'Servicios']
 const PAGE_SIZE = 10
 
-// ── Mock data for each tab ──────────────────────────────────────────────────
+// ── Mock data para Proveedores en /context/ProveedoresContext.jsx (Módulo 10 sin backend aún) ──
 
 // ── Helpers para Clientes ──────────────────────────────────────────────────────
 
 const CLIENT_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo', archived: 'Archivado' }
 const PROVEEDOR_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo' }
-
-const PROVEEDORES_DATA = Array.from({ length: 10 }, (_, i) => ({
-  id: i + 1,
-  nombre: ['AWS Services', 'Google Workspace', 'Adobe Inc', 'Slack Corp', 'Figma Inc', 'Notion', 'Vercel', 'GitHub', 'Linear', 'Loom'][i],
-  status: 'active',
-  mail: ['aws', 'google.ws', 'adobe', 'slack', 'figma', 'notion', 'vercel', 'github', 'linear', 'loom'][i] + '@empresa.com',
-  tipoServicio: ['Cloud', 'SaaS', 'Diseño', 'Comunicación', 'Diseño', 'Productividad', 'Dev', 'Dev', 'Gestión', 'Video'][i],
-  medioPago: 'Transferencia',
-  destino: 'CBU 123456789',
-  cuit: '30-' + String(61234567 + i * 1234567) + '-8',
-}))
 
 // ── Helpers para Entidades ───────────────────────────────────────────────────
 
@@ -69,11 +60,6 @@ function EntityArcaBadge({ entity }) {
 }
 
 const SERVICE_STATUS_LABEL = { active: 'Activo', inactive: 'Inactivo', archived: 'Archivado' }
-
-// ── Forms ────────────────────────────────────────────────────────────────────
-
-const EMPTY_PROVEEDOR = { nombre: '', email: '', tipoServicio: '', metodoPago: '', destino: '', cuit: '' }
-const EMPTY_SERVICIO  = { nombre: '', tipoSvc: 'Fijo', precioBase: '', moneda: 'ARS', estadoInicial: true }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -161,11 +147,9 @@ export default function Administracion() {
     error: servicesError,
     saveCatalog,
     setCatalogStatus,
-    listCatalogPriceHistory,
   } = useServices()
+  const { proveedores, saveProveedor, setProveedorStatus, deleteProveedor } = useProveedores()
   const [tab, setTab] = useState(0)
-  const [proveedores, setProveedores] = useState(PROVEEDORES_DATA)
-  const [catalogHistory, setCatalogHistory] = useState({})
   const [editingServicio, setEditingServicio] = useState(null)
   const [editingManagedEntity, setEditingManagedEntity] = useState(null)
   const [entityStatusAction, setEntityStatusAction] = useState(null)
@@ -173,19 +157,15 @@ export default function Administracion() {
   const [editingCliente, setEditingCliente] = useState(null) // null = crear, objeto = editar
   const [clientStatusAction, setClientStatusAction] = useState(null)
   const [changingClientStatus, setChangingClientStatus] = useState(false)
+  const [editingProveedor, setEditingProveedor] = useState(null)
   const [proveedorStatusAction, setProveedorStatusAction] = useState(null)
   const [serviceStatusAction, setServiceStatusAction] = useState(null)
   const [changingServiceStatus, setChangingServiceStatus] = useState(false)
 
   const [openModal, setOpenModal] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
-  const [formP, setFormP] = useState(EMPTY_PROVEEDOR)
-  const [formS, setFormS] = useState(EMPTY_SERVICIO)
-  const [submitted, setSubmitted] = useState(false)
 
   const [rowMenuOpen, setRowMenuOpen] = useState(null)
-  const [expandedServicio, setExpandedServicio] = useState(null)
-  const [historialAnio, setHistorialAnio] = useState(String(new Date().getFullYear()))
   const rowMenuRef = useRef(null)
 
   const [search, setSearch] = useState('')
@@ -226,9 +206,9 @@ export default function Administracion() {
   function confirmProveedorStatusAction() {
     const { proveedor, action } = proveedorStatusAction
     if (action === 'delete') {
-      setProveedores(prev => prev.filter(r => r.id !== proveedor.id))
+      deleteProveedor(proveedor)
     } else {
-      setProveedores(prev => prev.map(r => r.id === proveedor.id ? { ...r, status: action === 'activate' ? 'active' : 'inactive' } : r))
+      setProveedorStatus(proveedor, action === 'activate' ? 'active' : 'inactive')
     }
     setProveedorStatusAction(null)
   }
@@ -296,18 +276,6 @@ export default function Administracion() {
   }
 
   // Guardar handlers
-  const chP = e => setFormP(p => ({ ...p, [e.target.name]: e.target.value }))
-  const chS = e => setFormS(p => ({ ...p, [e.target.name]: e.target.value }))
-
-  const isReadyP = formP.nombre && formP.email && formP.destino
-  const isReadyS = formS.nombre && formS.tipoSvc
-
-  const guardarP = () => {
-    setSubmitted(true)
-    if (!isReadyP) return
-    setProveedores(p => [{ id: Date.now(), nombre: formP.nombre, status: 'active', mail: formP.email, tipoServicio: formP.tipoServicio, medioPago: formP.metodoPago, destino: formP.destino, cuit: formP.cuit }, ...p])
-    setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setOpenModal(null); setTab(1)
-  }
 
   async function changeServiceCatalogStatus(service, nextStatus) {
     setChangingServiceStatus(true)
@@ -320,67 +288,11 @@ export default function Administracion() {
     }
   }
 
-  function openEditServicio(servicio) {
-    setEditingServicio(servicio)
-    setFormS({
-      nombre: servicio.name || '',
-      tipoSvc: servicio.type === 'hourly' ? 'Por hora' : 'Fijo',
-      precioBase: servicio.basePrice ?? '',
-      moneda: servicio.currency || 'ARS',
-      estadoInicial: servicio.status === 'active',
-    })
-    setSubmitted(false)
-    setOpenModal('servicio')
-  }
-
-  const guardarS = async () => {
-    setSubmitted(true)
-    if (!isReadyS) return
-    await saveCatalog({
-      id: editingServicio?.id || null,
-      updatedAt: editingServicio?.updatedAt || null,
-      name: formS.nombre,
-      type: formS.tipoSvc === 'Por hora' ? 'hourly' : 'fixed',
-      currency: formS.moneda,
-      basePrice: formS.tipoSvc === 'Fijo' ? Number(formS.precioBase) : null,
-      status: formS.estadoInicial ? 'active' : 'inactive',
-    })
-    setFormS(EMPTY_SERVICIO); setEditingServicio(null); setSubmitted(false); setOpenModal(null); setTab(3)
-  }
-
-  async function toggleExpandServicio(id) {
-    setExpandedServicio(prev => {
-      const next = prev === id ? null : id
-      return next
-    })
-    if (!catalogHistory[id]) {
-      const history = await listCatalogPriceHistory(id).catch(() => [])
-      setCatalogHistory(current => ({ ...current, [id]: history }))
-    }
-  }
-
-  const footerFor = (isReady, onSave) => (
-    <div className="modal-footer-inner">
-      <div className="modal-validation">
-        {!isReady && (
-          <span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            {' '}Completá los campos obligatorios (*)
-          </span>
-        )}
-      </div>
-      <button className={'btn-guardar' + (isReady ? ' ready' : '')} onClick={onSave} disabled={!isReady}>Guardar</button>
-    </div>
-  )
-
   const closeModal = () => {
     setOpenModal(null)
-    setSubmitted(false)
     setEditingCliente(null)
     setEditingServicio(null)
+    setEditingProveedor(null)
   }
 
   // Table columns per tab
@@ -404,7 +316,7 @@ export default function Administracion() {
                   ? (ENTITY_VOUCHER_LABEL[r.billingEntity.defaultVoucher] || '—') + ' — ' + r.billingEntity.name
                   : '—'
                 return (
-                  <tr key={r.id} className="tr-clickable" onClick={() => openClienteForm(r)}>
+                  <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/cliente/${r.id}`)}>
                     <td>
                       <span className="link-nro">{r.name}</span>
                       {r.ipcAdjustable && (
@@ -478,19 +390,26 @@ export default function Administracion() {
           {pageRows.length === 0
             ? <tr><td colSpan={8} className="td-empty">Sin resultados</td></tr>
             : pageRows.map(r => (
-              <tr key={r.id}>
-                <td>{r.nombre}</td>
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/proveedor/${r.id}`)}>
+                <td><span className="link-nro">{r.nombre}</span></td>
                 <td><Badge estado={PROVEEDOR_STATUS_LABEL[r.status] || r.status} /></td>
                 <td className="td-muted">{r.mail}</td>
                 <td className="td-muted">{r.tipoServicio}</td>
                 <td className="td-muted">{r.medioPago}</td>
                 <td className="td-muted">{r.destino}</td>
                 <td className="td-muted">{r.cuit}</td>
-                <td className="row-menu-cell">
+                <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
                   <button className="dots-btn" aria-label={'Opciones '+r.nombre} aria-expanded={rowMenuOpen===r.id}
                     onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
                   {rowMenuOpen === r.id && (
                     <div className="row-menu" ref={rowMenuRef} role="menu">
+                      <button className="row-menu-item" role="menuitem" onClick={() => { setEditingProveedor(r); setOpenModal('proveedor'); setRowMenuOpen(null) }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Editar
+                      </button>
                       <button className="row-menu-item" role="menuitem" onClick={() => openProveedorStatusAction(r, r.status === 'active' ? 'deactivate' : 'activate')}>
                         {r.status === 'active'
                           ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
@@ -586,147 +505,69 @@ export default function Administracion() {
 
     // tab === 3: Servicios (catálogo global — T13)
     return (
-      <>
-        <table>
-          <thead><tr>
-            <th scope="col">NOMBRE</th>
-            <th scope="col">TIPO</th>
-            <th scope="col">PRECIO BASE</th>
-            <th scope="col">MONEDA</th>
-            <th scope="col">CLIENTES ACTIVOS</th>
-            <th scope="col">ESTADO</th>
-            <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
-          </tr></thead>
-          <tbody>
-            {pageRows.length === 0
-              ? <tr><td colSpan={7} className="td-empty">Sin resultados</td></tr>
-              : pageRows.map(r => {
-                const isExpanded = expandedServicio === r.id
-                const historial  = (catalogHistory[r.id] || []).map(h => ({ fecha: h.effectiveDate, precio: h.newPrice, motivo: h.reason }))
-                const aniosDisp  = [...new Set(historial.map(h => h.fecha.slice(0,4)))].sort((a,b) => b-a)
-                const anioFiltro = historialAnio
-                const histFiltrado = historial.filter(h => h.fecha.startsWith(anioFiltro))
-
-                function fmtPrecioH(p, mon) {
-                  if (!p) return '—'
-                  return mon === 'USD'
-                    ? 'US$ ' + Number(p).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '$ '  + Number(p).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-                }
-                function fmtFechaH(iso) {
-                  if (!iso) return '—'
-                  const [y, m] = iso.split('-')
-                  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
-                  return `${meses[parseInt(m,10)-1]} ${y}`
-                }
-
-                return (
-                  <>
-                    <tr key={r.id} style={{ cursor: 'pointer' }}
-                      onClick={() => toggleExpandServicio(r.id)}
-                    >
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 10, opacity: .4, transition: 'transform .15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                          <strong>{r.name}</strong>
-                        </div>
-                      </td>
-                      <td className="td-muted">{r.type === 'hourly' ? 'Por hora' : 'Fijo'}</td>
-                      <td>{r.basePrice === null ? '—' : r.basePrice.toLocaleString('es-AR')}</td>
-                      <td><span className="moneda-badge">{r.currency}</span></td>
-                      <td className="td-muted">{r.activeClientsCount ?? 0}</td>
-                      <td><Badge estado={SERVICE_STATUS_LABEL[r.status] || r.status} /></td>
-                      <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
-                        <button className="dots-btn" aria-label={'Opciones '+r.name} aria-expanded={rowMenuOpen===r.id}
-                          onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
-                        {rowMenuOpen === r.id && (
-                          <div className="row-menu" ref={rowMenuRef} role="menu">
-                            {r.status !== 'archived' && (
-                              <button className="row-menu-item" role="menuitem" onClick={() => { openEditServicio(r); setRowMenuOpen(null) }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                </svg>
-                                Editar
-                              </button>
-                            )}
-                            {r.status === 'archived' ? (
-                              <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'restore' }); setRowMenuOpen(null) }}>
-                                Restaurar
-                              </button>
-                            ) : (
-                              <>
-                                <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: r.status === 'active' ? 'deactivate' : 'activate' }); setRowMenuOpen(null) }}>
-                                  {r.status === 'active'
-                                    ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
-                                    : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
-                                  }
-                                </button>
-                                <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'archive' }); setRowMenuOpen(null) }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                                  </svg>
-                                  Eliminar
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr key={r.id + '-hist'}>
-                        <td colSpan={7} style={{ padding: 0, background: 'var(--bg-page, #f5f6fa)' }}>
-                          <div style={{ padding: '14px 20px 16px' }}>
-                            {/* Header historial + filtro año */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', opacity: .5 }}>
-                                Historial de precios
-                              </span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 12, opacity: .5 }}>Año:</span>
-                                <select
-                                  value={anioFiltro}
-                                  onChange={e => setHistorialAnio(e.target.value)}
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, padding: '3px 8px', background: '#fff', cursor: 'pointer' }}
-                                >
-                                  {aniosDisp.map(a => <option key={a} value={a}>{a}</option>)}
-                                </select>
-                              </div>
-                            </div>
-                            {/* Filas de historial */}
-                            {histFiltrado.length === 0 ? (
-                              <div style={{ fontSize: 13, opacity: .4, textAlign: 'center', padding: '12px 0' }}>
-                                Sin ajustes registrados en {anioFiltro}
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                {histFiltrado.map((h, i) => (
-                                  <div key={i} style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    background: '#fff', borderRadius: 8, padding: '8px 14px',
-                                    border: '1px solid #e5e7eb', fontSize: 13,
-                                  }}>
-                                    <span style={{ opacity: .55, minWidth: 70 }}>{fmtFechaH(h.fecha)}</span>
-                                    <span style={{ flex: 1, paddingLeft: 16, opacity: .7 }}>{h.motivo || '—'}</span>
-                                    <span style={{ fontWeight: 700 }}>{fmtPrecioH(h.precio, r.moneda)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                )
-              })
-            }
-          </tbody>
-        </table>
-        <p className="servicios-nota">Los precios y condiciones por cliente se configuran en el perfil de cada cliente.</p>
-      </>
+      <table>
+        <thead><tr>
+          <th scope="col">NOMBRE</th>
+          <th scope="col">TIPO</th>
+          <th scope="col">PRECIO BASE</th>
+          <th scope="col">MONEDA</th>
+          <th scope="col">CLIENTES ACTIVOS</th>
+          <th scope="col">ESTADO</th>
+          <th scope="col" style={{ width:36 }}><span className="sr-only">Acciones</span></th>
+        </tr></thead>
+        <tbody>
+          {pageRows.length === 0
+            ? <tr><td colSpan={7} className="td-empty">{servicesLoading ? 'Cargando servicios…' : 'Sin resultados'}</td></tr>
+            : pageRows.map(r => (
+              <tr key={r.id} className="tr-clickable" onClick={() => navigate(`/administracion/servicio/${r.id}`)}>
+                <td><span className="link-nro">{r.name}</span></td>
+                <td className="td-muted">{r.type === 'hourly' ? 'Por hora' : 'Fijo'}</td>
+                <td>{r.basePrice === null ? '—' : r.basePrice.toLocaleString('es-AR')}</td>
+                <td><span className="moneda-badge">{r.currency}</span></td>
+                <td className="td-muted">{r.activeClientsCount ?? 0}</td>
+                <td><Badge estado={SERVICE_STATUS_LABEL[r.status] || r.status} /></td>
+                <td className="row-menu-cell" onClick={e => e.stopPropagation()}>
+                  <button className="dots-btn" aria-label={'Opciones '+r.name} aria-expanded={rowMenuOpen===r.id}
+                    onClick={() => setRowMenuOpen(prev => prev===r.id?null:r.id)}>⋮</button>
+                  {rowMenuOpen === r.id && (
+                    <div className="row-menu" ref={rowMenuRef} role="menu">
+                      {r.status !== 'archived' && (
+                        <button className="row-menu-item" role="menuitem" onClick={() => { setEditingServicio(r); setOpenModal('servicio'); setRowMenuOpen(null) }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                          Editar
+                        </button>
+                      )}
+                      {r.status === 'archived' ? (
+                        <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'restore' }); setRowMenuOpen(null) }}>
+                          Restaurar
+                        </button>
+                      ) : (
+                        <>
+                          <button className="row-menu-item" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: r.status === 'active' ? 'deactivate' : 'activate' }); setRowMenuOpen(null) }}>
+                            {r.status === 'active'
+                              ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Desactivar</>
+                              : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Activar</>
+                            }
+                          </button>
+                          <button className="row-menu-item row-menu-item-danger" role="menuitem" onClick={() => { setServiceStatusAction({ service: r, action: 'archive' }); setRowMenuOpen(null) }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                            </svg>
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
     )
   }
 
@@ -776,9 +617,9 @@ export default function Administracion() {
               <div className="nuevo-dropdown" role="menu">
                 {[
                   { label: 'Nuevo cliente', action: () => { setTab(0); openClienteForm(null); setShowDropdown(false) } },
-                  { label: 'Nuevo proveedor', action: () => { setTab(1); setOpenModal('proveedor'); setFormP(EMPTY_PROVEEDOR); setSubmitted(false); setShowDropdown(false) } },
+                  { label: 'Nuevo proveedor', action: () => { setTab(1); setEditingProveedor(null); setOpenModal('proveedor'); setShowDropdown(false) } },
                   { label: 'Nueva entidad', action: () => { setTab(2); openManagedEntityForm(); setShowDropdown(false) } },
-                  { label: 'Nuevo servicio', action: () => { setTab(3); setOpenModal('servicio'); setFormS(EMPTY_SERVICIO); setSubmitted(false); setShowDropdown(false) } },
+                  { label: 'Nuevo servicio', action: () => { setTab(3); setEditingServicio(null); setOpenModal('servicio'); setShowDropdown(false) } },
                 ].map(item => (
                   <button key={item.label} role="menuitem" className="nuevo-dropdown-item" onClick={item.action}>
                     {item.label}
@@ -829,40 +670,14 @@ export default function Administracion() {
         taxCategories={activeTaxCategories}
       />
 
-      {/* NUEVO PROVEEDOR modal */}
-      <Modal isOpen={openModal === 'proveedor'} onClose={closeModal} title="NUEVO PROVEEDOR" triggerRef={btnNuevoRef}
-        footer={footerFor(isReadyP, guardarP)}>
-        <div className="form-group">
-          <label htmlFor="p-nombre">Nombre del Proveedor</label>
-          <input id="p-nombre" className="form-input" name="nombre" value={formP.nombre} onChange={chP} />
-        </div>
-        <div className="form-group">
-          <label htmlFor="p-email">Email</label>
-          <input id="p-email" className="form-input" name="email" type="email" value={formP.email} onChange={chP} />
-        </div>
-        <div className="form-group">
-          <label htmlFor="p-tipo">Tipo de Servicio</label>
-          <select id="p-tipo" className="form-select" name="tipoServicio" value={formP.tipoServicio} onChange={chP}>
-            <option value=""></option>
-            {['Cloud', 'SaaS', 'Diseño', 'Comunicación', 'Productividad', 'Dev', 'Gestión'].map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="p-pago">Método de Pago</label>
-          <select id="p-pago" className="form-select" name="metodoPago" value={formP.metodoPago} onChange={chP}>
-            <option value=""></option>
-            {['Transferencia', 'Débito automático', 'Tarjeta'].map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="p-destino">Destino</label>
-          <input id="p-destino" className="form-input" name="destino" value={formP.destino} onChange={chP} />
-        </div>
-        <div className="form-group">
-          <label htmlFor="p-cuit">CUIT</label>
-          <input id="p-cuit" className="form-input" name="cuit" value={formP.cuit} onChange={chP} />
-        </div>
-      </Modal>
+      <ProveedorFormModal
+        isOpen={openModal === 'proveedor'}
+        proveedor={editingProveedor}
+        onClose={closeModal}
+        onSave={saveProveedor}
+        onSaved={() => { setOpenModal(null); setEditingProveedor(null); setTab(1) }}
+        triggerRef={btnNuevoRef}
+      />
 
       <EntityFormModal
         isOpen={openModal === 'managed-entity'}
@@ -915,39 +730,14 @@ export default function Administracion() {
         onSaveTaxCategory={saveTaxCategory}
       />
 
-      {/* NUEVO SERVICIO modal — catálogo global (T13) */}
-      <Modal isOpen={openModal === 'servicio'} onClose={closeModal} title={editingServicio ? 'EDITAR SERVICIO' : 'NUEVO SERVICIO'} triggerRef={btnNuevoRef}
-        footer={footerFor(isReadyS, guardarS)}>
-        <div className="form-group">
-          <label htmlFor="s-nombre">Nombre del servicio <span className="label-req">*</span></label>
-          <input id="s-nombre" className="form-input" name="nombre" value={formS.nombre} onChange={chS} placeholder="ej: Social Media" />
-        </div>
-        <div className="form-group">
-          <label>Tipo <span className="label-req">*</span></label>
-          <div className="svc-tipo-group">
-            {['Fijo', 'Por hora'].map(t => (
-              <label key={t} className={'svc-tipo-option' + (formS.tipoSvc === t ? ' svc-tipo-active' : '')}>
-                <input type="radio" name="tipoSvc" value={t} checked={formS.tipoSvc === t}
-                  onChange={chS} style={{ display: 'none' }} />
-                {t === 'Fijo' ? 'Precio fijo' : 'Por hora'}
-              </label>
-            ))}
-          </div>
-        </div>
-        {formS.tipoSvc === 'Fijo' && (
-          <div className="form-group">
-            <label htmlFor="s-precio">Precio base</label>
-            <input id="s-precio" className="form-input" name="precioBase" value={formS.precioBase} onChange={chS} placeholder="0.00" />
-          </div>
-        )}
-        <div className="form-group">
-          <label htmlFor="s-moneda">Moneda</label>
-          <select id="s-moneda" className="form-select" name="moneda" value={formS.moneda} onChange={chS}>
-            <option>ARS</option><option>USD</option>
-          </select>
-        </div>
-        <p className="servicios-nota" style={{ marginTop: 8 }}>Los precios específicos por cliente se configuran en el perfil de cada cliente.</p>
-      </Modal>
+      <ServiceCatalogFormModal
+        isOpen={openModal === 'servicio'}
+        service={editingServicio}
+        onClose={closeModal}
+        onSave={saveCatalog}
+        onSaved={() => { setOpenModal(null); setEditingServicio(null); setTab(3) }}
+        triggerRef={btnNuevoRef}
+      />
     </div>
   )
 }
