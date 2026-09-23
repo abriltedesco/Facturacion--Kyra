@@ -3,14 +3,15 @@
 // Solo frontend. Cero backend. Todos los datos son mock.
 // Módulo 8 integrado: auto-envío de email tras emisión exitosa.
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
+import { useClients } from '../context/ClientsContext'
+import { useServices } from '../context/ServicesContext'
 import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 
-import { CLIENTES_INICIAL } from '../data/clientes'
-import { SERVICIOS_INICIAL } from '../data/servicios'
+import { adaptClientsToLegacy, adaptClientServicesToLegacy } from '../utils/legacyAdapters'
 import {
   CONTADORES_INICIAL,
   claveContador,
@@ -58,6 +59,8 @@ export default function EmisionPage() {
   const navigate = useNavigate()
   const { lineas, setLineas } = useFacturacion()
   const { entities, activeEntities } = useEntities()
+  const { clients } = useClients()
+  const { allClientServices, loadAllClientServices } = useServices()
   const contadoresRef                     = useRef({ ...CONTADORES_INICIAL })
   const historialEmailRef                 = useRef([])        // local historial de emails de esta sesión
   const [emitirTodoActivo, setEmitirTodoActivo] = useState(false)
@@ -67,10 +70,15 @@ export default function EmisionPage() {
   const [showNueva, setShowNueva]       = useState(false)
   const [emissionConfirmation, setEmissionConfirmation] = useState(null)
 
+  useEffect(() => { loadAllClientServices().catch(() => {}) }, [loadAllClientServices])
+
+  const clientesLegacy  = adaptClientsToLegacy(clients)
+  const serviciosLegacy = adaptClientServicesToLegacy(allClientServices)
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  function getCliente(id)  { return CLIENTES_INICIAL.find(c => c.id === id) }
-  function getServicio(id) { return SERVICIOS_INICIAL.find(s => s.id === id) }
+  function getCliente(id)  { return clientesLegacy.find(c => c.id === id) }
+  function getServicio(id) { return serviciosLegacy.find(s => s.id === id) }
   function getEntidad(id)  { return entities.find(entity => String(entity.id) === String(id)) }
 
   function setLineaStatus(id, patch) {
@@ -520,8 +528,8 @@ export default function EmisionPage() {
         borderRadius:10, overflow:'hidden' }}>
         <TablaEmision
           lineas={lineasFiltradas}
-          clientes={CLIENTES_INICIAL}
-          servicios={SERVICIOS_INICIAL}
+          clientes={clientesLegacy}
+          servicios={serviciosLegacy}
           entidades={entities}
           onEmitir={solicitarEmision}
           onReintentar={handleReintentar}
@@ -543,8 +551,8 @@ export default function EmisionPage() {
       {/* Modal nueva factura */}
       {showNueva && (
         <ModalNuevaFactura
-          clientes={CLIENTES_INICIAL}
-          servicios={SERVICIOS_INICIAL}
+          clientes={clientesLegacy}
+          servicios={serviciosLegacy}
           entidades={activeEntities}
           onGuardar={handleNuevaFactura}
           onClose={() => setShowNueva(false)}

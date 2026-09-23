@@ -12,6 +12,7 @@ function sortByName(items) {
 export function ServicesProvider({ children, repository = defaultRepository }) {
   const [catalog, setCatalog] = useState([])
   const [clientServices, setClientServices] = useState({})
+  const [allClientServices, setAllClientServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -52,6 +53,19 @@ export function ServicesProvider({ children, repository = defaultRepository }) {
     }
   }, [repository])
 
+  const loadAllClientServices = useCallback(async ({ silent = false } = {}) => {
+    if (!repository) return []
+    try {
+      const services = await repository.listAllClientServices()
+      setAllClientServices(sortByName(services))
+      if (!silent) setError('')
+      return services
+    } catch (requestError) {
+      setError(requestError.message || 'No se pudieron cargar los servicios de los clientes.')
+      throw requestError
+    }
+  }, [repository])
+
   async function saveCatalog(catalogDraft, reason) {
     setError('')
     try {
@@ -84,6 +98,10 @@ export function ServicesProvider({ children, repository = defaultRepository }) {
         ...(current[clientId] || []).filter(service => service.id !== savedService.id),
       ]),
     }))
+    setAllClientServices(current => sortByName([
+      savedService,
+      ...current.filter(service => service.id !== savedService.id),
+    ]))
     return savedService
   }
 
@@ -119,6 +137,8 @@ export function ServicesProvider({ children, repository = defaultRepository }) {
       error,
       refreshCatalog,
       loadClientServices,
+      loadAllClientServices,
+      allClientServices,
       getClientServices: clientId => clientServices[clientId] || [],
       saveCatalog,
       setCatalogStatus,

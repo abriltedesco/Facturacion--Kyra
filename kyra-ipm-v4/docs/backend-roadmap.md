@@ -44,14 +44,14 @@ Marcar con `[x]` al completar. Actualizar tras cada sesión.
 - [x] Tests (pgTAP en `supabase/tests/ipc_adjustments_module.test.sql` sin ejecutar por falta de Docker; unitarios `ipcRules.test.js` y `ipcAdjustmentRepository.test.js` — todos pasan)
 
 ## Módulo 5 — Facturación mensual
-- [ ] Tabla `billing_lines` (cliente, servicio, período, tipo factura, entidad, moneda, horas, importes, alertas, status)
-- [ ] Generación automática de líneas desde clientes + servicios activos del mes
-- [ ] Cálculo real de impuestos (reemplazar 21% hardcoded) según `tax_categories`/país
-- [ ] Detección automática de servicios con IPC pendiente (ligar a Módulo 4)
-- [ ] RPCs: aprobar / editar / excluir línea
-- [ ] Persistencia de estados (pendiente_revision → aprobada → emitida → enviada)
-- [ ] Conectar `FacturacionContext.jsx` / `FacturacionMes.jsx` al backend
-- [ ] Tests
+- [x] Tabla `billing_lines` (cliente, servicio via `client_service_id`, período mes/año, tipo factura, entidad, moneda, horas, importes, alertas, status)
+- [x] Generación automática de líneas desde clientes + servicios activos del mes (`generate_billing_lines`)
+- [x] Cálculo real de impuestos (reemplaza el 21% hardcoded) según `tax_categories` del cliente (Módulo 2), snapshoteado en `tax_rate` al generar
+- [x] Detección automática de servicios con IPC pendiente (liga `ipc_adjustment_id` a un ajuste del Módulo 4 todavía no aprobado/rechazado)
+- [x] RPCs: aprobar (`approve_billing_line`) / editar (`edit_billing_line`) / excluir (`exclude_billing_line`), + rechazar/marcar emitida/marcar enviada
+- [x] Persistencia de estados (revision → aprobada → emitida → enviada), más `excluida` y vuelta a `revision` al rechazar
+- [x] Conectar `FacturacionContext.jsx` / `FacturacionMes.jsx` al backend (y `EmisionPage.jsx` a los datos reales de clientes/servicios, sin tocar su simulación de ARCA)
+- [x] Tests (pgTAP en `supabase/tests/billing_lines_module.test.sql` sin ejecutar por falta de Docker; unitarios `billingLineRepository.test.js` — todos pasan)
 
 ## Módulo 6 — Generación de facturas
 - [ ] Integración real ARCA/WSFE (reemplazar `emisionARCA.js` simulado) con certificado por entidad

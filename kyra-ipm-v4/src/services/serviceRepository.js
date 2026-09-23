@@ -172,6 +172,15 @@ export function createServiceRepository(client) {
       return (data || []).map(mapClientServiceRow)
     },
 
+    async listAllClientServices() {
+      const { data, error } = await client
+        .from('client_services')
+        .select(CLIENT_SERVICE_SELECT)
+        .order('name', { ascending: true })
+      if (error) throw repositoryError(error)
+      return (data || []).map(mapClientServiceRow)
+    },
+
     getClientServiceById,
 
     async saveClientService(serviceDraft, reason) {

@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useFacturacion } from '../context/FacturacionContext'
 import { useEntities } from '../context/EntitiesContext'
+import { useClients } from '../context/ClientsContext'
+import { useServices } from '../context/ServicesContext'
 import Modal from '../components/Modal'
 import EmissionWarningDialog from '../components/Emision/EmissionWarningDialog'
-import { CLIENTES_INICIAL } from '../data/clientes'
-import { SERVICIOS_INICIAL } from '../data/servicios'
 import { HISTORIAL_INICIAL } from '../data/historialEnvios'
 import { CONFIG_EMAIL_INICIAL } from '../data/configEnvioEmail'
 import { PLANTILLAS_INICIAL } from '../data/plantillasEmail'
@@ -15,6 +15,7 @@ import { enviarEmailFactura, construirRegistroHistorial } from '../utils/envioEm
 import { getAllowedVoucherTypes } from '../domain/entityRules'
 import { getEmissionWarningEntries } from '../domain/emissionWarnings'
 import { generarNroFactura } from '../data/contadoresFactura'
+import { adaptClientsToLegacy, adaptClientServicesToLegacy } from '../utils/legacyAdapters'
 
 
 const MES_LABEL   = 'Agosto 2026'
@@ -296,7 +297,7 @@ function TotalCliente({ lineas }) {
 
 // ─── Service line: Pendiente revisión ────────────────────────────────────────
 
-function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar }) {
+function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar, onExcluir }) {
   const esHoras = linea.alertas?.includes('horas_no_ingresadas')
   const [horas,  setHoras]  = useState(linea.cantidadHoras ?? '')
   const [tarifa, setTarifa] = useState(linea.tarifaHora ?? '')
@@ -422,6 +423,9 @@ function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar }) 
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-secondary btn-sm" onClick={() => onExcluir(linea)} style={{ color: '#8e44ad' }}>
+            Excluir
+          </button>
           <button className="btn-secondary btn-sm" onClick={() => onEditar(linea)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
             <IcoEdit /> Editar
           </button>
@@ -441,7 +445,7 @@ function ServiceLineRevision({ linea, entidad, servicio, onAprobar, onEditar }) 
 
 // ─── Grupo cliente: Pendiente revisión ───────────────────────────────────────
 
-function ClienteGrupoRevision({ grupo, entidades, servicios, onAprobar, onEditar }) {
+function ClienteGrupoRevision({ grupo, entidades, servicios, onAprobar, onEditar, onExcluir }) {
   const { cliente, lineas } = grupo
   const total = lineas.length
   return (
@@ -465,6 +469,7 @@ function ClienteGrupoRevision({ grupo, entidades, servicios, onAprobar, onEditar
               servicio={servicio}
               onAprobar={onAprobar}
               onEditar={onEditar}
+              onExcluir={onExcluir}
             />
           </div>
         )
@@ -843,7 +848,7 @@ function ModalEditarLinea({ linea, onClose, onGuardar, clientes, entidades, serv
   function handleGuardar() {
     const e = validate()
     if (Object.keys(e).length) { setErrors(e); return }
-    let cambios = { ajusteIPCPendiente: aplicarIPC }
+    let cambios = { ajusteIPCPendiente: aplicarIPC, nota }
     if (esHoras) {
       const neto = Number(cantHoras) * Number(tarifaHora)
       const imp  = calcImpuesto(neto, linea.tipoFactura)
@@ -1025,6 +1030,7 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
       alertas:       [],
       variacionVsMesAnterior: null,
       status:        'revision',
+      nota:          form.nota,
     })
     onClose()
     setPaso(0)
@@ -1239,19 +1245,31 @@ function ModalNuevaFactura({ isOpen, onClose, onAgregar, clientes, entidades, se
 
 export default function FacturacionMes() {
   const navigate = useNavigate()
-  const { lineas, setLineas, historialEmail, addHistorialEmail } = useFacturacion()
+  const {
+    lineas, setLineas, historialEmail, addHistorialEmail, loading, error,
+    generarLineas, agregarLineaManual, editarLinea, aprobarLinea: aprobarLineaBackend,
+    excluirLinea: excluirLineaBackend, rechazarLinea: rechazarLineaBackend,
+    marcarEmitida, marcarEnviada,
+  } = useFacturacion()
   const { entities: entidades, activeEntities } = useEntities()
+  const { clients } = useClients()
+  const { allClientServices, loadAllClientServices } = useServices()
   const [tabActivo,       setTabActivo]       = useState('revision')
   const [drawerLinea,     setDrawerLinea]     = useState(null)
   const [emailDrawerLinea, setEmailDrawerLinea] = useState(null)
   const [lineaEditar,     setLineaEditar]     = useState(null)
   const [showNueva,       setShowNueva]       = useState(false)
   const [emissionConfirmation, setEmissionConfirmation] = useState(null)
+  const [generando, setGenerando] = useState(false)
 
   const btnNuevaRef = useRef(null)
 
-  const clientes  = CLIENTES_INICIAL
-  const servicios = SERVICIOS_INICIAL
+  useEffect(() => { loadAllClientServices().catch(() => {}) }, [loadAllClientServices])
+
+  // Adaptadores: mapean los datos reales de Clientes (Módulo 2) y Servicios (Módulo 3)
+  // al shape legacy que usan las tarjetas/drawers de esta pantalla.
+  const clientes = adaptClientsToLegacy(clients)
+  const servicios = adaptClientServicesToLegacy(allClientServices)
 
   // ── Email helpers ────────────────────────────────────────────────────────────
 
@@ -1296,13 +1314,28 @@ export default function FacturacionMes() {
     })
   }
 
-  // ── State machine ───────────────────────────────────────────────────────────
+  // ── State machine (persistida contra Supabase — Módulo 5) ───────────────────
 
-  function aprobarLinea(id, cambios) {
-    setLineas(ls => ls.map(l => l.id === id
-      ? { ...l, ...cambios, status: 'aprobada' }
-      : l
-    ))
+  async function handleGenerarLineas() {
+    setGenerando(true)
+    try {
+      await generarLineas(MESES.indexOf(MES_ACTUAL) + 1, ANIO_ACTUAL)
+      setTabActivo('revision')
+    } finally {
+      setGenerando(false)
+    }
+  }
+
+  async function aprobarLinea(id, cambios) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    await aprobarLineaBackend(linea, { quantityHours: cambios?.cantidadHoras, hourlyRate: cambios?.tarifaHora }).catch(() => {})
+  }
+
+  async function excluirLinea(id) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    await excluirLineaBackend(linea).catch(() => {})
   }
 
   function solicitarEmision(id) {
@@ -1317,19 +1350,21 @@ export default function FacturacionMes() {
     emitirLineaAhora(id)
   }
 
-  function emitirLineaAhora(id) {
+  async function emitirLineaAhora(id) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    const entidad = entidades.find(item => String(item.id) === String(linea.entidadId))
+    const nroFac = contadorNroFac(lineas, entidad, linea.tipoFactura, linea.anio)
     let lineaEmitida
-    setLineas(ls => {
-      const linea  = ls.find(l => l.id === id)
-      const entidad = entidades.find(item => String(item.id) === String(linea?.entidadId))
-      const nroFac = contadorNroFac(ls, entidad, linea?.tipoFactura, linea?.anio)
-      lineaEmitida = {
-        ...linea, status: 'emitida', nroFactura: nroFac,
-        fechaEmision: fechaHoy(),
-        fechaVencimiento: fechaUltimoDia(linea.mes, linea.anio),
-      }
-      return ls.map(l => l.id === id ? lineaEmitida : l)
-    })
+    try {
+      lineaEmitida = await marcarEmitida(linea, {
+        invoiceNumber: nroFac,
+        issuedAt: fechaHoy(),
+        dueDate: fechaUltimoDia(linea.mes, linea.anio),
+      })
+    } catch {
+      return
+    }
     // Disparar envío de email en el próximo tick (lineaEmitida ya está construida)
     setTimeout(() => intentarEnvioEmail(lineaEmitida), 0)
   }
@@ -1345,28 +1380,39 @@ export default function FacturacionMes() {
     navigate(`/administracion/entidad/${entityId}`)
   }
 
-  function enviarLinea(id) {
-    setLineas(ls => ls.map(l => l.id === id
-      ? { ...l, status: 'enviada', fechaEnvio: fechaHoy() }
-      : l
-    ))
+  async function enviarLinea(id) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    await marcarEnviada(linea).catch(() => {})
   }
 
-  function rechazarLinea(id) {
-    setLineas(ls => ls.map(l => l.id === id
-      ? { ...l, status: 'revision',
-          nroFactura: undefined, fechaEmision: undefined, fechaVencimiento: undefined }
-      : l
-    ))
+  async function rechazarLinea(id) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    await rechazarLineaBackend(linea).catch(() => {})
   }
 
-  function guardarEdicion(id, cambios) {
-    setLineas(ls => ls.map(l => l.id === id ? { ...l, ...cambios } : l))
+  async function guardarEdicion(id, cambios) {
+    const linea = lineas.find(l => l.id === id)
+    if (!linea) return
+    await editarLinea(linea, {
+      baseAmount: cambios.montoBase ?? null,
+      quantityHours: cambios.cantidadHoras ?? null,
+      hourlyRate: cambios.tarifaHora ?? null,
+      notes: cambios.nota,
+    }).catch(() => {})
   }
 
-  function agregarLinea(nueva) {
-    const nextId = Math.max(...lineas.map(l => l.id), 0) + 1
-    setLineas(ls => [...ls, { ...nueva, id: nextId }])
+  async function agregarLinea(nueva) {
+    await agregarLineaManual({
+      clientServiceId: nueva.servicioId,
+      periodMonth: MESES.indexOf(nueva.mes) + 1,
+      periodYear: nueva.anio,
+      baseAmount: nueva.montoBase,
+      quantityHours: nueva.cantidadHoras,
+      hourlyRate: nueva.tarifaHora,
+      notes: nueva.nota,
+    }).catch(() => {})
   }
 
   // ── Filtered lists ──────────────────────────────────────────────────────────
@@ -1411,15 +1457,28 @@ export default function FacturacionMes() {
           <h1 className="page-title" style={{ marginBottom: '2px' }}>Facturación del mes</h1>
           <div style={{ fontSize: '13px', opacity: .5 }}>{MES_LABEL}</div>
         </div>
-        <button
-          ref={btnNuevaRef}
-          className="btn-cta"
-          onClick={() => setShowNueva(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-        >
-          <IcoPlus /> Nueva línea
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="btn-secondary"
+            onClick={handleGenerarLineas}
+            disabled={generando}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            {generando ? 'Generando…' : 'Generar líneas del mes'}
+          </button>
+          <button
+            ref={btnNuevaRef}
+            className="btn-cta"
+            onClick={() => setShowNueva(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <IcoPlus /> Nueva línea
+          </button>
+        </div>
       </div>
+
+      {error && <div className="admin-data-error" role="alert">{error}</div>}
+      {loading && lineas.length === 0 && <p style={{ opacity: .5, fontSize: 13 }}>Cargando líneas de facturación…</p>}
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '28px', flexWrap: 'wrap' }}>
@@ -1478,6 +1537,7 @@ export default function FacturacionMes() {
             servicios={servicios}
             onAprobar={aprobarLinea}
             onEditar={setLineaEditar}
+            onExcluir={excluirLinea}
           />
         ))}
 
